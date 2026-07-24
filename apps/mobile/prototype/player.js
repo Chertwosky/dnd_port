@@ -84,6 +84,7 @@ const ui = {
   playerMapDice: document.getElementById("playerMapDice"),
   mapInspectOpenBtn: document.getElementById("mapInspectOpenBtn"),
   playerShowNamesBtn: document.getElementById("playerShowNamesBtn"),
+  mapInspectShowNamesBtn: document.getElementById("mapInspectShowNamesBtn"),
   mapInspectOverlay: document.getElementById("mapInspectOverlay"),
   mapInspectCloseBtn: document.getElementById("mapInspectCloseBtn"),
   mapInspectTitle: document.getElementById("mapInspectTitle"),
@@ -1046,6 +1047,7 @@ function openMapInspect() {
   ui.mapInspectOverlay.classList.remove("hidden");
   ui.mapInspectOverlay.setAttribute("aria-hidden", "false");
   document.body.classList.add("map-inspect-open");
+  syncTokenNamesUi();
   renderInspectMap();
   requestAnimationFrame(() => fitInspectToViewport());
 }
@@ -2565,16 +2567,28 @@ document.getElementById("playerMapDice")?.addEventListener("click", (e) => {
 });
 
 ui.mapInspectOpenBtn?.addEventListener("click", () => openMapInspect());
-ui.playerShowNamesBtn?.addEventListener("click", () => {
-  state.showTokenNames = !state.showTokenNames;
-  ui.playerShowNamesBtn.classList.toggle("primary", state.showTokenNames);
-  ui.playerShowNamesBtn.setAttribute("aria-pressed", state.showTokenNames ? "true" : "false");
+
+function syncTokenNamesUi() {
+  const on = Boolean(state.showTokenNames);
+  for (const btn of [ui.playerShowNamesBtn, ui.mapInspectShowNamesBtn]) {
+    if (!btn) continue;
+    btn.classList.toggle("primary", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
   const wrap = ui.playerMapWrap || ui.playerMapGrid?.closest(".player-map");
-  wrap?.classList.toggle("names-on", state.showTokenNames);
-  ui.mapInspectStage?.classList.toggle("names-on", state.showTokenNames);
+  wrap?.classList.toggle("names-on", on);
+  ui.mapInspectStage?.classList.toggle("names-on", on);
+}
+
+function toggleTokenNames() {
+  state.showTokenNames = !state.showTokenNames;
+  syncTokenNamesUi();
   renderMap();
   if (mapInspect.open) renderInspectMap();
-});
+}
+
+ui.playerShowNamesBtn?.addEventListener("click", () => toggleTokenNames());
+ui.mapInspectShowNamesBtn?.addEventListener("click", () => toggleTokenNames());
 ui.playerMapWrap?.addEventListener("click", (e) => {
   if (state.selectedTokenId) return;
   if (e.target.closest?.(".token")) return;

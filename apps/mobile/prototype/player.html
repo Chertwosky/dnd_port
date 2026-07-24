@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Игрок — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps44" />
+    <link rel="stylesheet" href="/app.css?v=maps45" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -183,6 +183,15 @@
       <div class="map-inspect-bar">
         <button type="button" id="mapInspectCloseBtn" class="map-inspect-close" aria-label="Закрыть">✕</button>
         <span id="mapInspectTitle" class="map-inspect-title">Карта</span>
+        <button
+          type="button"
+          id="mapInspectShowNamesBtn"
+          class="map-names-toggle map-inspect-names"
+          aria-pressed="false"
+          title="Показать имена героев на карте"
+        >
+          Имена
+        </button>
         <div class="map-inspect-zoom">
           <button type="button" id="mapInspectZoomOut" aria-label="Уменьшить">−</button>
           <button type="button" id="mapInspectZoomFit" aria-label="Вписать">⊡</button>
@@ -203,6 +212,6 @@
       <div class="modal-card stack npc-sheet-card" id="npcSheetModalBody"></div>
     </div>
 
-    <script type="module" src="/player.js?v=47"></script>
+    <script type="module" src="/player.js?v=48"></script>
   </body>
 </html>
