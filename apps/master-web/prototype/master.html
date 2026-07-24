@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps34" />
+    <link rel="stylesheet" href="/app.css?v=maps35" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -246,13 +246,14 @@
             </div>
 
             <div class="card stack">
-              <div class="subtitle">Выдать игроку</div>
-              <select id="lootRecipient"></select>
+              <div class="subtitle">Кому выдаём</div>
+              <div id="lootRecipientChips" class="loot-recipient-chips" role="listbox" aria-label="Получатель лута"></div>
+              <div id="lootRecipientHint" class="loot-recipient-hint error-text">Сначала выберите героя — иначе выдача заблокирована</div>
               <div class="row loot-gold-row">
                 <input id="lootGoldAmount" type="number" min="1" step="1" value="50" placeholder="зм" title="Золотые монеты" />
-                <button type="button" id="lootGoldBtn" class="primary">Выдать золото</button>
+                <button type="button" id="lootGoldBtn" class="primary" disabled>Выдать золото</button>
               </div>
-              <span class="muted">Предмет — «Выдать» в карточке; золото — сумма и кнопка выше</span>
+              <span class="muted">Кнопки «Выдать» на карточках тоже идут выбранному герою (с подтверждением)</span>
             </div>
 
             <div class="card stack">
@@ -355,6 +356,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps34"></script>
+    <script type="module" src="/master.js?v=maps35"></script>
   </body>
 </html>

@@ -124,7 +124,8 @@ const ui = {
   lootAttune: document.getElementById("lootAttune"),
   lootAddDropBtn: document.getElementById("lootAddDropBtn"),
   lootAddCampaignBtn: document.getElementById("lootAddCampaignBtn"),
-  lootRecipient: document.getElementById("lootRecipient"),
+  lootRecipientChips: document.getElementById("lootRecipientChips"),
+  lootRecipientHint: document.getElementById("lootRecipientHint"),
   lootGoldAmount: document.getElementById("lootGoldAmount"),
   lootGoldBtn: document.getElementById("lootGoldBtn"),
   lootDropsList: document.getElementById("lootDropsList"),
@@ -248,6 +249,7 @@ const state = {
       { id: "legendary", label: "Легендарный" }
     ]
   },
+  lootRecipientKey: "",
   selectedRarity: "uncommon",
   pendingGrant: null,
   characters: [],
@@ -4182,15 +4184,17 @@ function openLootCard(item, from = "drops") {
     <div class="loot-desc-full">${escapeHtml(item.description || "Описание отсутствует").replace(/\n/g, "<br/>")}</div>
     ${src ? `<div class="muted">Источник: ${escapeHtml(src)}</div>` : ""}
     <div class="row">
-      <button type="button" class="primary" id="lootModalGrantBtn">Выдать игроку</button>
+      <button type="button" class="primary" id="lootModalGrantBtn" data-loot-grant-btn ${
+        selectedRecipient() ? "" : "disabled"
+      }>${escapeHtml(grantButtonLabel())}</button>
       <button type="button" id="lootModalRemoveBtn">Убрать из списка</button>
     </div>
   `;
   ui.lootModal.classList.remove("hidden");
   document.getElementById("closeLootCardBtn")?.addEventListener("click", closeLootCard);
   document.getElementById("lootModalGrantBtn")?.addEventListener("click", async () => {
-    await grantLootItem(item.id, from);
-    closeLootCard();
+    const ok = await grantLootItem(item.id, from);
+    if (ok) closeLootCard();
   });
   document.getElementById("lootModalRemoveBtn")?.addEventListener("click", async () => {
     await removeLootItem(item.id, from);
@@ -4222,7 +4226,9 @@ function renderLastDrop(item) {
     <div class="loot-desc-scroll">${escapeHtml(item.description || "Нет описания").replace(/\n/g, "<br/>")}</div>
     <div class="row">
       <button type="button" data-act="details" class="primary">Подробнее</button>
-      <button type="button" data-act="grant">Выдать</button>
+      <button type="button" data-act="grant" data-loot-grant-btn ${selectedRecipient() ? "" : "disabled"}>${escapeHtml(
+        grantButtonLabel()
+      )}</button>
     </div>
   `;
   ui.lootLastDrop.querySelector('[data-act="details"]')?.addEventListener("click", () => openLootCard(item, "drops"));
@@ -4252,7 +4258,9 @@ function renderLootList(container, items, from) {
       <div class="loot-desc-scroll">${escapeHtml(item.description || "Нет описания").replace(/\n/g, "<br/>")}</div>
       <div class="row">
         <button type="button" data-act="details">Подробнее</button>
-        <button type="button" data-act="grant" class="primary">Выдать</button>
+        <button type="button" data-act="grant" class="primary" data-loot-grant-btn ${
+          selectedRecipient() ? "" : "disabled"
+        }>${escapeHtml(grantButtonLabel())}</button>
         <button type="button" data-act="remove">Убрать</button>
       </div>
     `;
@@ -4284,18 +4292,111 @@ function renderRarityButtons() {
   }
 }
 
-function renderRecipients() {
-  if (!ui.lootRecipient) return;
+function listLootRecipients() {
   const opts = [];
-  for (const c of state.characters || []) {
-    opts.push(`<option value="c:${c.id}">Персонаж: ${c.name}</option>`);
-  }
+  const boundCharIds = new Set();
   for (const m of state.members || []) {
     if (m.role === "master") continue;
-    opts.push(`<option value="m:${m.id}">Игрок: ${m.name}</option>`);
+    if (m.characterId) {
+      boundCharIds.add(m.characterId);
+      const ch = (state.characters || []).find((c) => c.id === m.characterId);
+      opts.push({
+        key: `c:${m.characterId}`,
+        label: ch?.name || m.name,
+        sub: `игрок ${m.name}`,
+        portraitUrl: ch?.portraitUrl || null
+      });
+    } else if (m.role === "player" || m.role === "spectator") {
+      // игрок без листа — только если нет героев; зрителей в список не сорим
+      if (m.role === "player") {
+        opts.push({
+          key: `m:${m.id}`,
+          label: m.name,
+          sub: "без персонажа",
+          portraitUrl: null
+        });
+      }
+    }
   }
-  ui.lootRecipient.innerHTML =
-    opts.join("") || `<option value="">Нет получателей — пусть игроки зайдут в лобби</option>`;
+  for (const c of state.characters || []) {
+    if (boundCharIds.has(c.id)) continue;
+    opts.push({
+      key: `c:${c.id}`,
+      label: c.name,
+      sub: "герой в пуле",
+      portraitUrl: c.portraitUrl || null
+    });
+  }
+  return opts;
+}
+
+function selectedRecipient() {
+  const key = state.lootRecipientKey || "";
+  return listLootRecipients().find((r) => r.key === key) || null;
+}
+
+function grantButtonLabel() {
+  const r = selectedRecipient();
+  return r ? `Выдать → ${r.label}` : "Выдать (выберите кого)";
+}
+
+function syncLootRecipientUi() {
+  const r = selectedRecipient();
+  if (ui.lootRecipientHint) {
+    if (r) {
+      ui.lootRecipientHint.className = "loot-recipient-hint ok-text";
+      ui.lootRecipientHint.textContent = `Сейчас выдаём: ${r.label}${r.sub ? ` (${r.sub})` : ""}`;
+    } else {
+      ui.lootRecipientHint.className = "loot-recipient-hint error-text";
+      ui.lootRecipientHint.textContent = "Сначала выберите героя — иначе выдача заблокирована";
+    }
+  }
+  if (ui.lootGoldBtn) ui.lootGoldBtn.disabled = !r;
+  document.querySelectorAll("[data-loot-grant-btn]").forEach((btn) => {
+    btn.disabled = !r;
+    btn.textContent = grantButtonLabel();
+  });
+}
+
+function renderRecipients() {
+  if (!ui.lootRecipientChips) return;
+  const opts = listLootRecipients();
+  if (state.lootRecipientKey && !opts.some((o) => o.key === state.lootRecipientKey)) {
+    state.lootRecipientKey = "";
+  }
+  ui.lootRecipientChips.innerHTML = "";
+  if (!opts.length) {
+    ui.lootRecipientChips.innerHTML = `<div class="muted">Нет получателей — зайдите игроками или залейте героев</div>`;
+    syncLootRecipientUi();
+    return;
+  }
+  for (const o of opts) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `loot-recipient-chip${state.lootRecipientKey === o.key ? " active" : ""}`;
+    btn.setAttribute("role", "option");
+    btn.setAttribute("aria-selected", state.lootRecipientKey === o.key ? "true" : "false");
+    btn.dataset.recipientKey = o.key;
+    const portrait = o.portraitUrl
+      ? `<img class="loot-recipient-portrait" src="${escapeAttr(o.portraitUrl)}" alt="" />`
+      : `<span class="loot-recipient-portrait placeholder">${escapeHtml(String(o.label).charAt(0))}</span>`;
+    btn.innerHTML = `${portrait}<span class="loot-recipient-text"><strong>${escapeHtml(o.label)}</strong><span class="muted">${escapeHtml(
+      o.sub || ""
+    )}</span></span>`;
+    btn.addEventListener("click", () => {
+      state.lootRecipientKey = o.key;
+      renderRecipients();
+      // refresh grant button labels on loot cards
+      renderLootList(ui.lootDropsList, state.loot.sessionDrops, "drops");
+      renderLootList(ui.lootCampaignList, state.loot.campaignPool, "campaign");
+      if (state.loot.sessionDrops?.length) {
+        const last = state.loot.sessionDrops[state.loot.sessionDrops.length - 1];
+        if (ui.lootLastDrop && !ui.lootLastDrop.classList.contains("hidden")) renderLastDrop(last);
+      }
+    });
+    ui.lootRecipientChips.appendChild(btn);
+  }
+  syncLootRecipientUi();
 }
 
 function renderLootGrants() {
@@ -4308,13 +4409,21 @@ function renderLootGrants() {
   }
   for (const g of grants) {
     const row = document.createElement("div");
-    row.className = "card";
+    row.className = "card loot-grant-row";
+    let main = "";
     if (g.kind === "gold" || g.from === "gold") {
       const after = g.coinsAfter?.gp != null ? ` (итог ${g.coinsAfter.gp} зм)` : "";
-      row.textContent = `${g.item?.name ?? "золото"} → ${g.recipientLabel}${after}`;
+      main = `${g.item?.name ?? "золото"} → <strong>${escapeHtml(g.recipientLabel)}</strong>${escapeHtml(after)}`;
     } else {
-      row.textContent = `${g.item?.name ?? "предмет"} → ${g.recipientLabel}`;
+      main = `${escapeHtml(g.item?.name ?? "предмет")} → <strong>${escapeHtml(g.recipientLabel)}</strong>`;
     }
+    row.innerHTML = `<div class="loot-grant-main">${main}</div>
+      <button type="button" data-ungrant="${escapeAttr(g.id)}">Отозвать</button>`;
+    row.querySelector("[data-ungrant]")?.addEventListener("click", () => {
+      ungrantLoot(g.id).catch((err) => {
+        if (ui.lootCatalogStatus) ui.lootCatalogStatus.textContent = `ошибка: ${String(err.message || err)}`;
+      });
+    });
     ui.lootGrantsList.appendChild(row);
   }
 }
@@ -4401,17 +4510,23 @@ async function removeLootItem(itemId, from) {
 }
 
 async function grantLootItem(itemId, from) {
-  const raw = ui.lootRecipient?.value || "";
-  if (!raw) {
-    ui.lootCatalogStatus.textContent = "Нет получателя";
-    return;
+  const raw = state.lootRecipientKey || "";
+  const recipient = selectedRecipient();
+  if (!raw || !recipient) {
+    ui.lootCatalogStatus.textContent = "Сначала выберите, кому выдаём";
+    return false;
   }
+  const itemName =
+    (from === "campaign" ? state.loot.campaignPool : state.loot.sessionDrops)?.find((i) => i.id === itemId)?.name ||
+    "предмет";
+  if (!window.confirm(`Выдать «${itemName}» → ${recipient.label}?`)) return false;
+
   const body = { itemId, from };
   if (raw.startsWith("c:")) body.characterId = raw.slice(2);
   else if (raw.startsWith("m:")) body.memberId = raw.slice(2);
   else {
     ui.lootCatalogStatus.textContent = "Выберите получателя";
-    return;
+    return false;
   }
   try {
     const data = await call("/loot/grant", {
@@ -4424,15 +4539,18 @@ async function grantLootItem(itemId, from) {
       renderLastDrop(null);
     }
     ui.lootCatalogStatus.textContent = `Выдано: ${data.grant?.item?.name} → ${data.grant?.recipientLabel}`;
+    return true;
   } catch (error) {
     ui.lootCatalogStatus.textContent = `ошибка: ${String(error.message || error)}`;
+    return false;
   }
 }
 
 async function grantLootGold() {
-  const raw = ui.lootRecipient?.value || "";
-  if (!raw) {
-    ui.lootCatalogStatus.textContent = "Нет получателя";
+  const raw = state.lootRecipientKey || "";
+  const recipient = selectedRecipient();
+  if (!raw || !recipient) {
+    ui.lootCatalogStatus.textContent = "Сначала выберите, кому выдаём";
     return;
   }
   const amount = Math.trunc(Number(ui.lootGoldAmount?.value || 0));
@@ -4440,6 +4558,8 @@ async function grantLootGold() {
     ui.lootCatalogStatus.textContent = "Укажите сумму зм";
     return;
   }
+  if (!window.confirm(`Выдать ${amount} зм → ${recipient.label}?`)) return;
+
   const body = { amount };
   if (raw.startsWith("c:")) body.characterId = raw.slice(2);
   else if (raw.startsWith("m:")) body.memberId = raw.slice(2);
@@ -4462,6 +4582,21 @@ async function grantLootGold() {
   } catch (error) {
     ui.lootCatalogStatus.textContent = `ошибка: ${String(error.message || error)}`;
   }
+}
+
+async function ungrantLoot(grantId) {
+  const grant = (state.loot.grants || []).find((g) => g.id === grantId);
+  const label = grant
+    ? `${grant.item?.name || "выдачу"} у ${grant.recipientLabel || "получателя"}`
+    : "выдачу";
+  if (!window.confirm(`Отозвать ${label}? Предмет вернётся в дроп.`)) return;
+  const data = await call("/loot/ungrant", {
+    method: "POST",
+    body: JSON.stringify({ grantId })
+  });
+  state.loot = { ...state.loot, ...data.loot };
+  renderLootPanel();
+  ui.lootCatalogStatus.textContent = `Отозвано: ${data.revoked?.item?.name || "выдача"}`;
 }
 
 async function bootstrapApp() {

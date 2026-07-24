@@ -1411,6 +1411,7 @@ async function requestHandler(req, res) {
       "/loot/custom",
       "/loot/campaign",
       "/loot/grant",
+      "/loot/ungrant",
       "/loot/gold",
       "/loot/mine",
       "/loot/preload",
@@ -3227,7 +3228,19 @@ async function requestHandler(req, res) {
 
       const grant = {
         id: randomId("grant"),
-        item: { id: item.id, name: item.name, rarity: item.rarity, rarityLabel: item.rarityLabel },
+        kind: "item",
+        item: {
+          id: item.id,
+          name: item.name,
+          rarity: item.rarity,
+          rarityLabel: item.rarityLabel,
+          type: item.type || "",
+          description: item.description || "",
+          requiresAttunement: Boolean(item.requiresAttunement),
+          stats: item.stats || null,
+          catalogId: item.catalogId || null,
+          source: item.source || null
+        },
         characterId: character?.id ?? null,
         memberId: member?.id ?? null,
         recipientLabel,
@@ -3236,6 +3249,69 @@ async function requestHandler(req, res) {
       };
       loot.grants.push(grant);
       sendJson(res, 200, { grant, loot: lootPublicView(loot) });
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/loot/ungrant") {
+      const session = getSession(req);
+      if (session?.role !== "master") {
+        sendJson(res, 403, { error: "Только мастер" });
+        return;
+      }
+      const body = await readJson(req);
+      const grantId = String(body.grantId ?? "");
+      const loot = ensureLootState(game);
+      const gIdx = loot.grants.findIndex((g) => g.id === grantId);
+      if (gIdx < 0) {
+        sendJson(res, 404, { error: "Выдача не найдена" });
+        return;
+      }
+      const [grant] = loot.grants.splice(gIdx, 1);
+
+      if (grant.kind === "gold" || grant.from === "gold") {
+        const character = grant.characterId
+          ? game.characters.find((c) => c.id === grant.characterId)
+          : null;
+        if (character) {
+          const coins = ensureCharacterCoins(character);
+          const amount = Math.trunc(Number(grant.amountGp) || 0);
+          coins.gp = Math.max(0, coins.gp - amount);
+        }
+        sendJson(res, 200, { revoked: grant, loot: lootPublicView(loot) });
+        return;
+      }
+
+      const itemId = grant.item?.id;
+      let restored = null;
+      if (grant.characterId) {
+        const character = game.characters.find((c) => c.id === grant.characterId);
+        if (character && Array.isArray(character.inventory)) {
+          const i = character.inventory.findIndex((it) => it.id === itemId);
+          if (i >= 0) restored = character.inventory.splice(i, 1)[0];
+        }
+      } else if (grant.memberId) {
+        const member = lobby.members.find((m) => m.id === grant.memberId);
+        if (member && Array.isArray(member.inventory)) {
+          const i = member.inventory.findIndex((it) => it.id === itemId);
+          if (i >= 0) restored = member.inventory.splice(i, 1)[0];
+        }
+      }
+
+      if (restored) {
+        const { grantedAt, ...item } = restored;
+        const target = grant.from === "campaign" ? loot.campaignPool : loot.sessionDrops;
+        target.push(item);
+      } else if (grant.item?.id) {
+        // предмет уже убрали из инвентаря вручную — вернём карточку в дроп
+        const target = grant.from === "campaign" ? loot.campaignPool : loot.sessionDrops;
+        target.push({
+          ...grant.item,
+          id: grant.item.id,
+          name: grant.item.name || "Предмет"
+        });
+      }
+
+      sendJson(res, 200, { revoked: grant, restored: Boolean(restored), loot: lootPublicView(loot) });
       return;
     }
 

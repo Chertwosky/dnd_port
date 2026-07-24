@@ -3230,6 +3230,74 @@ body.map-inspect-open {
   flex: 0 0 auto;
 }
 
+.loot-recipient-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.loot-recipient-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  background: #151d2b;
+  text-align: left;
+}
+
+.loot-recipient-chip.active {
+  border-color: #3b82f6;
+  background: #1e3a5f;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35);
+}
+
+.loot-recipient-portrait {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex: 0 0 auto;
+  background: #243044;
+}
+
+.loot-recipient-portrait.placeholder {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.loot-recipient-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.loot-recipient-hint {
+  font-size: 13px;
+  min-height: 1.2em;
+}
+
+.loot-recipient-hint.ok-text {
+  color: #86efac;
+}
+
+.loot-grant-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.loot-grant-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .loot-last-drop {
   margin-top: 8px;
   padding: 10px;
