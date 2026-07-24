@@ -73,6 +73,7 @@ import {
   publishMap,
   replaceMapsFromTemplate,
   setActiveMap,
+  setMapPlayerSwitchLock,
   syncActiveMapAlias
 } from "./modules/map-docs.mjs";
 import { getAdventureTemplate, listAdventureTemplates } from "./data/adventures/index.mjs";
@@ -982,7 +983,22 @@ async function seedAdventureParty(game, { replace = true } = {}) {
 }
 
 function syncHeroToken(game, character, position = { x: 2, y: 2 }) {
-  let token = game.map.tokens.find((t) => t.characterId === character.id || (t.type === "player" && t.name === character.name));
+  ensureMapSystem(game);
+  const active = getActiveMap(game);
+  const charId = character?.id || null;
+  const charName = String(character?.name || "").trim().toLowerCase();
+  const isSameHero = (t) =>
+    Boolean(t) &&
+    (Boolean(charId && t.characterId === charId) ||
+      (t.type === "player" && charName && String(t.name || "").trim().toLowerCase() === charName));
+
+  // Герой только на одной карте: убрать со всех остальных.
+  for (const map of game.maps || []) {
+    if (map.id === active.id) continue;
+    map.tokens = (map.tokens || []).filter((t) => !isSameHero(t));
+  }
+
+  let token = (active.tokens || []).find((t) => isSameHero(t));
   if (!token) {
     token = {
       id: randomId("token"),
@@ -994,11 +1010,12 @@ function syncHeroToken(game, character, position = { x: 2, y: 2 }) {
       hpCurrent: character.vitals.hpCurrent,
       hpMax: character.vitals.hpMax,
       position: {
-        x: clamp(position.x, 0, game.map.width - 1),
-        y: clamp(position.y, 0, game.map.height - 1)
+        x: clamp(position.x, 0, active.width - 1),
+        y: clamp(position.y, 0, active.height - 1)
       }
     };
-    game.map.tokens.push(token);
+    if (!Array.isArray(active.tokens)) active.tokens = [];
+    active.tokens.push(token);
   } else {
     token.name = character.name;
     token.portraitUrl = character.portraitUrl || token.portraitUrl || null;
@@ -1006,7 +1023,14 @@ function syncHeroToken(game, character, position = { x: 2, y: 2 }) {
     token.dexMod = character.abilities?.dex?.modifier ?? abilityModifier(character.abilities?.dex?.score);
     token.hpCurrent = character.vitals.hpCurrent;
     token.hpMax = character.vitals.hpMax;
+    if (position) {
+      token.position = {
+        x: clamp(position.x, 0, active.width - 1),
+        y: clamp(position.y, 0, active.height - 1)
+      };
+    }
   }
+  syncActiveMapAlias(game);
   return token;
 }
 
@@ -1429,7 +1453,7 @@ async function requestHandler(req, res) {
     const isGamePath =
       gamePaths.includes(parsedUrl.pathname) ||
       /^\/map\/tokens\/[^/]+\/move$/.test(parsedUrl.pathname) ||
-      /^\/maps\/[^/]+\/(activate|publish)$/.test(parsedUrl.pathname) ||
+      /^\/maps\/[^/]+\/(activate|publish|lock)$/.test(parsedUrl.pathname) ||
       /^\/adventures\/[^/]+\/apply$/.test(parsedUrl.pathname) ||
       /^\/characters\/[^/]+$/.test(parsedUrl.pathname) ||
       /^\/characters\/[^/]+\/level-up\/options$/.test(parsedUrl.pathname) ||
@@ -2320,6 +2344,25 @@ async function requestHandler(req, res) {
       return;
     }
 
+    if (req.method === "POST" && /^\/maps\/[^/]+\/lock$/.test(parsedUrl.pathname)) {
+      if (!requireMaster(req, res)) return;
+      const mapId = decodeURIComponent(parsedUrl.pathname.split("/")[2]);
+      const body = await readJson(req).catch(() => ({}));
+      const locked = body.locked !== false && body.playerSwitchLocked !== false;
+      try {
+        const map = setMapPlayerSwitchLock(game, mapId, locked);
+        sendJson(res, 200, {
+          ok: true,
+          mapId: map.id,
+          playerSwitchLocked: Boolean(map.playerSwitchLocked),
+          maps: mapsPublicMeta(game, { forMaster: true })
+        });
+      } catch (e) {
+        sendJson(res, 404, { error: e.message || "Карта не найдена" });
+      }
+      return;
+    }
+
     if (req.method === "POST" && parsedUrl.pathname === "/maps/view") {
       const session = getSession(req);
       if (!session) {
@@ -2331,6 +2374,10 @@ async function requestHandler(req, res) {
       const map = game.maps.find((m) => m.id === mapId && m.published);
       if (!map) {
         sendJson(res, 404, { error: "Карта недоступна игрокам" });
+        return;
+      }
+      if (session.role !== "master" && map.playerSwitchLocked) {
+        sendJson(res, 403, { error: "Мастер временно закрыл переключение на эту карту" });
         return;
       }
       if (session.role === "master") {

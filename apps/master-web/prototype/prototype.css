@@ -288,6 +288,11 @@ button.warn {
   font-size: 11px;
 }
 
+.map-tab.switch-locked {
+  border-color: #b45309;
+  color: #fdba74;
+}
+
 .map-tabs-actions {
   flex-wrap: wrap;
   gap: 6px;

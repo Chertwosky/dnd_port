@@ -159,6 +159,8 @@ const ui = {
   addMapBtn: document.getElementById("addMapBtn"),
   publishMapBtn: document.getElementById("publishMapBtn"),
   unpublishMapBtn: document.getElementById("unpublishMapBtn"),
+  lockMapSwitchBtn: document.getElementById("lockMapSwitchBtn"),
+  unlockMapSwitchBtn: document.getElementById("unlockMapSwitchBtn"),
   exportMapsBtn: document.getElementById("exportMapsBtn"),
   exportOneMapBtn: document.getElementById("exportOneMapBtn"),
   importMapsInput: document.getElementById("importMapsInput"),
@@ -3780,17 +3782,31 @@ function renderMapTabs() {
   for (const m of state.maps) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = `map-tab${m.isActive ? " active" : ""}${m.published ? " published" : ""}`;
+    btn.className = `map-tab${m.isActive ? " active" : ""}${m.published ? " published" : ""}${
+      m.playerSwitchLocked ? " switch-locked" : ""
+    }`;
     btn.textContent = m.name;
-    btn.title = `${m.name} · ${m.width}×${m.height} · токенов ${m.tokenCount}${m.published ? " · открыта игрокам" : ""}`;
+    const lockHint = m.playerSwitchLocked ? " · вкладка заблокирована" : "";
+    btn.title = `${m.name} · ${m.width}×${m.height} · токенов ${m.tokenCount}${
+      m.published ? " · открыта игрокам" : ""
+    }${lockHint}`;
     btn.addEventListener("click", () => activateMap(m.id).catch(console.error));
     ui.mapTabs.appendChild(btn);
   }
   const active = state.maps.find((m) => m.isActive);
   if (ui.mapTabsStatus) {
     ui.mapTabsStatus.textContent = active
-      ? `Активна: ${active.name}${active.published ? " (видят игроки · ТВ)" : " (только мастер)"}${state.playerMapId === active.id ? " · карта стола" : ""}`
+      ? `Активна: ${active.name}${active.published ? " (видят игроки · ТВ)" : " (только мастер)"}${
+          active.playerSwitchLocked ? " · вкладка игрокам закрыта" : ""
+        }${state.playerMapId === active.id ? " · карта стола" : ""}`
       : "";
+  }
+  const canLock = Boolean(active?.published);
+  if (ui.lockMapSwitchBtn) {
+    ui.lockMapSwitchBtn.disabled = !canLock || Boolean(active?.playerSwitchLocked);
+  }
+  if (ui.unlockMapSwitchBtn) {
+    ui.unlockMapSwitchBtn.disabled = !canLock || !active?.playerSwitchLocked;
   }
 }
 
@@ -3806,6 +3822,16 @@ async function publishActiveMap(published) {
   await call(`/maps/${encodeURIComponent(id)}/publish`, {
     method: "POST",
     body: JSON.stringify({ published, setAsPlayerDefault: published })
+  });
+  await syncVision();
+}
+
+async function setActiveMapSwitchLock(locked) {
+  const id = state.activeMapId;
+  if (!id) return;
+  await call(`/maps/${encodeURIComponent(id)}/lock`, {
+    method: "POST",
+    body: JSON.stringify({ locked: Boolean(locked) })
   });
   await syncVision();
 }
@@ -4814,6 +4840,8 @@ ui.mapZoomFitBtn?.addEventListener("click", () => setMapZoom(1));
 ui.addMapBtn?.addEventListener("click", () => addEmptyMap().catch(console.error));
 ui.publishMapBtn?.addEventListener("click", () => publishActiveMap(true).catch(console.error));
 ui.unpublishMapBtn?.addEventListener("click", () => publishActiveMap(false).catch(console.error));
+ui.lockMapSwitchBtn?.addEventListener("click", () => setActiveMapSwitchLock(true).catch(console.error));
+ui.unlockMapSwitchBtn?.addEventListener("click", () => setActiveMapSwitchLock(false).catch(console.error));
 ui.exportMapsBtn?.addEventListener("click", () => exportMaps(true).catch(console.error));
 ui.exportOneMapBtn?.addEventListener("click", () => exportMaps(false).catch(console.error));
 ui.exportAllHeroesBtn?.addEventListener("click", () => {

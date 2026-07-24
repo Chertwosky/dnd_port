@@ -13,6 +13,7 @@ export function createEmptyMapDoc(name = "Карта", { width = 40, height = 30
     overlays: {},
     vision: { mode: "full", radius: 3, revealedCells: [] },
     published: false,
+    playerSwitchLocked: false,
     createdAt: new Date().toISOString()
   };
 }
@@ -29,6 +30,7 @@ export function cloneMapDoc(map, { name, published = false } = {}) {
     overlays: JSON.parse(JSON.stringify(src.overlays || {})),
     vision: JSON.parse(JSON.stringify(src.vision || { mode: "full", radius: 3, revealedCells: [] })),
     published: Boolean(published),
+    playerSwitchLocked: Boolean(src.playerSwitchLocked),
     createdAt: new Date().toISOString()
   };
 }
@@ -112,12 +114,21 @@ export function mapsPublicMeta(game, { forMaster = false } = {}) {
     id: m.id,
     name: m.name,
     published: Boolean(m.published),
+    playerSwitchLocked: Boolean(m.playerSwitchLocked),
     width: m.width,
     height: m.height,
     tokenCount: (m.tokens || []).length,
     isActive: m.id === game.activeMapId,
     isPlayerDefault: m.id === game.playerMapId
   })).filter((m) => forMaster || m.published);
+}
+
+export function setMapPlayerSwitchLock(game, mapId, locked = true) {
+  ensureMapSystem(game);
+  const map = getMapById(game, mapId);
+  if (!map) throw new Error("Карта не найдена");
+  map.playerSwitchLocked = Boolean(locked);
+  return map;
 }
 
 export function setActiveMap(game, mapId) {
@@ -138,6 +149,7 @@ export function publishMap(game, mapId, published = true) {
   const map = getMapById(game, mapId);
   if (!map) throw new Error("Карта не найдена");
   map.published = Boolean(published);
+  if (!map.published) map.playerSwitchLocked = false;
   if (map.published && !game.maps.some((m) => m.id === game.playerMapId && m.published)) {
     game.playerMapId = map.id;
   }
