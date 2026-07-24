@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DnD — Зритель</title>
+    <link rel="stylesheet" href="/app.css?v=spectator1" />
+  </head>
+  <body class="spectator-body">
+    <div id="spectatorGate" class="login-wrap">
+      <div class="login-card stack">
+        <div class="title">Режим зрителя</div>
+        <div class="subtitle">Только карта, инициатива и журнал · для ТВ</div>
+        <p class="muted">Сессия не найдена. Войдите с экрана выбора роли.</p>
+        <a class="login-link primary" href="/">На вход</a>
+      </div>
+    </div>
+
+    <div id="spectatorApp" class="spectator-app hidden">
+      <header class="spectator-top">
+        <div class="spectator-brand">
+          <span class="spectator-brand-mark">Стол</span>
+          <span id="spectatorLobbyTitle" class="spectator-lobby muted">—</span>
+        </div>
+        <div id="spectatorMapMeta" class="spectator-map-meta muted">Карта…</div>
+      </header>
+
+      <div class="spectator-layout">
+        <section class="spectator-stage" aria-label="Карта и инициатива">
+          <div id="spectatorInitiativeBar" class="init-bar spectator-init hidden" aria-live="polite"></div>
+          <div id="spectatorMapWrap" class="spectator-map-wrap map-wrap">
+            <div id="spectatorMapGrid" class="player-map-grid" role="img" aria-label="Карта сессии"></div>
+          </div>
+        </section>
+
+        <aside class="spectator-log-pane" aria-label="Журнал боя">
+          <div class="spectator-log-head">
+            <div class="title">Журнал боя</div>
+            <div class="subtitle">Броски и ХП</div>
+          </div>
+          <div id="spectatorCombatLog" class="spectator-log-list list"></div>
+        </aside>
+      </div>
+    </div>
+
+    <script type="module" src="/spectator.js?v=1"></script>
+  </body>
+</html>

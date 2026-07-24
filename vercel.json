@@ -7,9 +7,11 @@
   "rewrites": [
     { "source": "/master", "destination": "/master.html" },
     { "source": "/player", "destination": "/player.html" },
+    { "source": "/spectator", "destination": "/spectator.html" },
     { "source": "/prototype", "destination": "/index.html" },
     { "source": "/prototype/master", "destination": "/master.html" },
     { "source": "/prototype/player", "destination": "/player.html" },
+    { "source": "/prototype/spectator", "destination": "/spectator.html" },
     { "source": "/(.*)", "destination": "/api" }
   ],
   "functions": {

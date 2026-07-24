@@ -3308,6 +3308,10 @@ textarea {
   padding: 24px;
 }
 
+.login-card-wide {
+  width: min(520px, 100%);
+}
+
 .login-link {
   display: block;
   text-align: center;
@@ -3325,7 +3329,7 @@ textarea {
 
 .login-role-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
 }
 
@@ -3911,6 +3915,145 @@ textarea {
   }
   .chat-messages {
     max-height: 280px;
+  }
+  .login-role-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ——— Spectator TV ——— */
+.spectator-body {
+  margin: 0;
+  min-height: 100vh;
+  background: #0b1018;
+  overflow: hidden;
+}
+
+.spectator-app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px 12px;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.spectator-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.spectator-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.spectator-brand-mark {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.spectator-lobby {
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spectator-map-meta {
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.spectator-layout {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 32vw);
+  gap: 12px;
+}
+
+.spectator-stage {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spectator-init {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+.spectator-map-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid #243044;
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(59, 130, 246, 0.08), transparent 55%),
+    #0e1520;
+  --map-cell-size: 16px;
+}
+
+.spectator-map-wrap .player-map-grid {
+  margin: 0;
+}
+
+.spectator-log-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #243044;
+  background: #121a27;
+}
+
+.spectator-log-head .title {
+  font-size: 1.25rem;
+}
+
+.spectator-log-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spectator-log-card {
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.spectator-log-detail {
+  font-size: 1.15rem;
+  margin-top: 4px;
+}
+
+.spectator-log-empty {
+  font-size: 1rem;
+  padding: 8px 0;
+}
+
+@media (max-width: 900px) {
+  .spectator-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(180px, 34vh);
   }
 }
 

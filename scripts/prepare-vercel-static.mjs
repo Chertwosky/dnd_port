@@ -10,10 +10,12 @@ const assets = [
   ["index.html", "apps/master-web/prototype/index.html"],
   ["master.html", "apps/master-web/prototype/master.html"],
   ["player.html", "apps/mobile/prototype/player.html"],
+  ["spectator.html", "apps/master-web/prototype/spectator.html"],
   ["app.css", "apps/master-web/prototype/prototype.css"],
   ["login.js", "apps/master-web/prototype/login.js"],
   ["master.js", "apps/master-web/prototype/master.js"],
   ["player.js", "apps/mobile/prototype/player.js"],
+  ["spectator.js", "apps/master-web/prototype/spectator.js"],
   ["character-sheet.js", "apps/master-web/prototype/character-sheet.js"],
   ["initiative-bar.js", "apps/master-web/prototype/initiative-bar.js"],
   ["npc-sheet.js", "apps/master-web/prototype/npc-sheet.js"],
@@ -21,12 +23,14 @@ const assets = [
   ["prototype/login.js", "apps/master-web/prototype/login.js"],
   ["prototype/master.js", "apps/master-web/prototype/master.js"],
   ["prototype/player.js", "apps/mobile/prototype/player.js"],
+  ["prototype/spectator.js", "apps/master-web/prototype/spectator.js"],
   ["prototype/character-sheet.js", "apps/master-web/prototype/character-sheet.js"],
   ["prototype/initiative-bar.js", "apps/master-web/prototype/initiative-bar.js"],
   ["prototype/npc-sheet.js", "apps/master-web/prototype/npc-sheet.js"],
   ["prototype/index.html", "apps/master-web/prototype/index.html"],
   ["prototype/master.html", "apps/master-web/prototype/master.html"],
-  ["prototype/player.html", "apps/mobile/prototype/player.html"]
+  ["prototype/player.html", "apps/mobile/prototype/player.html"],
+  ["prototype/spectator.html", "apps/master-web/prototype/spectator.html"]
 ];
 
 await rm(pub, { recursive: true, force: true });

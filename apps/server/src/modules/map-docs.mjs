@@ -96,6 +96,14 @@ export function getPlayerViewMap(game, preferredMapId = null) {
   return game.maps.find((m) => m.published) || game.maps[0];
 }
 
+/** ТВ-зритель: активная карта мастера, если опубликована; иначе как у игроков. */
+export function getSpectatorViewMap(game) {
+  ensureMapSystem(game);
+  const active = game.maps.find((m) => m.id === game.activeMapId && m.published);
+  if (active) return active;
+  return getPlayerViewMap(game, null);
+}
+
 export function mapsPublicMeta(game, { forMaster = false } = {}) {
   ensureMapSystem(game);
   return game.maps.map((m) => ({

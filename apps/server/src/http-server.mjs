@@ -67,6 +67,7 @@ import {
   exportMapSet,
   getActiveMap,
   getPlayerViewMap,
+  getSpectatorViewMap,
   importMapSet,
   mapsPublicMeta,
   publishMap,
@@ -1144,8 +1145,10 @@ async function requestHandler(req, res) {
         "/",
         "/master",
         "/player",
+        "/spectator",
         "/prototype/master",
-        "/prototype/player"
+        "/prototype/player",
+        "/prototype/spectator"
       ]
     });
     return;
@@ -1155,12 +1158,15 @@ async function requestHandler(req, res) {
     "/prototype": path.join(repoRoot, "apps", "master-web", "prototype", "index.html"),
     "/master": path.join(repoRoot, "apps", "master-web", "prototype", "master.html"),
     "/player": path.join(repoRoot, "apps", "mobile", "prototype", "player.html"),
+    "/spectator": path.join(repoRoot, "apps", "master-web", "prototype", "spectator.html"),
     "/prototype/master": path.join(repoRoot, "apps", "master-web", "prototype", "master.html"),
     "/prototype/player": path.join(repoRoot, "apps", "mobile", "prototype", "player.html"),
+    "/prototype/spectator": path.join(repoRoot, "apps", "master-web", "prototype", "spectator.html"),
     "/prototype/prototype.css": path.join(repoRoot, "apps", "master-web", "prototype", "prototype.css"),
     "/prototype/login.js": path.join(repoRoot, "apps", "master-web", "prototype", "login.js"),
     "/prototype/master.js": path.join(repoRoot, "apps", "master-web", "prototype", "master.js"),
     "/prototype/player.js": path.join(repoRoot, "apps", "mobile", "prototype", "player.js"),
+    "/prototype/spectator.js": path.join(repoRoot, "apps", "master-web", "prototype", "spectator.js"),
     "/character-sheet.js": path.join(repoRoot, "apps", "master-web", "prototype", "character-sheet.js"),
     "/prototype/character-sheet.js": path.join(repoRoot, "apps", "master-web", "prototype", "character-sheet.js"),
     "/initiative-bar.js": path.join(repoRoot, "apps", "master-web", "prototype", "initiative-bar.js"),
@@ -1170,7 +1176,8 @@ async function requestHandler(req, res) {
     "/app.css": path.join(repoRoot, "apps", "master-web", "prototype", "prototype.css"),
     "/login.js": path.join(repoRoot, "apps", "master-web", "prototype", "login.js"),
     "/master.js": path.join(repoRoot, "apps", "master-web", "prototype", "master.js"),
-    "/player.js": path.join(repoRoot, "apps", "mobile", "prototype", "player.js")
+    "/player.js": path.join(repoRoot, "apps", "mobile", "prototype", "player.js"),
+    "/spectator.js": path.join(repoRoot, "apps", "master-web", "prototype", "spectator.js")
   };
 
   if (staticMap[parsedUrl.pathname]) {
@@ -1237,6 +1244,18 @@ async function requestHandler(req, res) {
       return;
     }
 
+    if (req.method === "POST" && parsedUrl.pathname === "/auth/spectator/login") {
+      const body = await readJson(req);
+      const spectatorName = String(body.spectatorName ?? body.name ?? "Зритель").trim() || "Зритель";
+      const token = randomId("session");
+      const userId = randomId("user");
+      const session = { role: "spectator", userId, userName: spectatorName };
+      sessions.set(token, session);
+      await persistSession(token, session);
+      sendJson(res, 201, { token, spectatorId: userId, spectatorName });
+      return;
+    }
+
     if (req.method === "GET" && parsedUrl.pathname === "/auth/session") {
       const session = getSession(req);
       if (!session) {
@@ -1269,8 +1288,8 @@ async function requestHandler(req, res) {
     if (req.method === "POST" && /^\/lobbies\/[^/]+\/join$/.test(parsedUrl.pathname)) {
       const lobbyId = parsedUrl.pathname.split("/")[2];
       const session = getSession(req);
-      if (!session || session.role !== "player") {
-        sendJson(res, 401, { error: "Войдите как игрок" });
+      if (!session || (session.role !== "player" && session.role !== "spectator")) {
+        sendJson(res, 401, { error: "Войдите как игрок или зритель" });
         return;
       }
       if (!lobbies.has(lobbyId)) {
@@ -1304,8 +1323,8 @@ async function requestHandler(req, res) {
 
     if (req.method === "POST" && parsedUrl.pathname === "/lobbies/join-by-title") {
       const session = getSession(req);
-      if (!session || session.role !== "player") {
-        sendJson(res, 401, { error: "Войдите как игрок" });
+      if (!session || (session.role !== "player" && session.role !== "spectator")) {
+        sendJson(res, 401, { error: "Войдите как игрок или зритель" });
         return;
       }
       const body = await readJson(req);
@@ -2105,10 +2124,13 @@ async function requestHandler(req, res) {
     if (req.method === "GET" && parsedUrl.pathname === "/map/vision") {
       const session = getSession(req);
       const isMaster = session?.role === "master";
+      const isSpectator = session?.role === "spectator";
       const member = lobby.members.find((m) => m.id === session?.userId);
       const viewMap = isMaster
         ? getActiveMap(game)
-        : getPlayerViewMap(game, member?.viewingMapId || null);
+        : isSpectator
+          ? getSpectatorViewMap(game)
+          : getPlayerViewMap(game, member?.viewingMapId || null);
       if (!viewMap.overlays) viewMap.overlays = {};
       const combat = ensureCombat(game);
       sendJson(res, 200, {
@@ -2124,34 +2146,38 @@ async function requestHandler(req, res) {
         maps: mapsPublicMeta(game, { forMaster: isMaster }),
         activeMapId: game.activeMapId,
         playerMapId: game.playerMapId,
-        members: lobby.members,
-        characters: game.characters.map((c) => {
-          const classes = ensureCharacterClasses(c);
-          return {
-            id: c.id,
-            name: c.name,
-            className: c.className,
-            classesLabel: formatClassesLabel(classes),
-            level: c.level,
-            experience: c.experience ?? 0,
-            race: c.race,
-            portraitUrl: c.portraitUrl || null,
-            isTest: Boolean(c.isTest),
-            vitals: c.vitals,
-            inventoryCount: (c.inventory || []).length,
-            canLevelUp: xpProgress(c.experience, c.level).canLevelUp
-          };
-        }),
+        members: isSpectator ? undefined : lobby.members,
+        characters: isSpectator
+          ? undefined
+          : game.characters.map((c) => {
+              const classes = ensureCharacterClasses(c);
+              return {
+                id: c.id,
+                name: c.name,
+                className: c.className,
+                classesLabel: formatClassesLabel(classes),
+                level: c.level,
+                experience: c.experience ?? 0,
+                race: c.race,
+                portraitUrl: c.portraitUrl || null,
+                isTest: Boolean(c.isTest),
+                vitals: c.vitals,
+                inventoryCount: (c.inventory || []).length,
+                canLevelUp: xpProgress(c.experience, c.level).canLevelUp
+              };
+            }),
         combat: combatPublicView(combat, {
-          viewerRole: session?.role,
-          characterId: member?.characterId || null,
+          viewerRole: isSpectator ? "spectator" : session?.role,
+          characterId: isSpectator ? null : member?.characterId || null,
           game
         }),
         loot: isMaster ? lootPublicView(ensureLootState(game)) : undefined,
         combatLog: publicCombatLog(game),
         privateChat: isMaster
           ? privateChatViewForMaster(game, lobby)
-          : privateChatViewForPlayer(game, lobby, session?.userId),
+          : isSpectator
+            ? undefined
+            : privateChatViewForPlayer(game, lobby, session?.userId),
         viewerRole: session?.role ?? "unknown"
       });
       return;

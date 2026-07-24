@@ -4,20 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>DnD Стол — вход</title>
-    <link rel="stylesheet" href="/app.css" />
+    <link rel="stylesheet" href="/app.css?v=spectator1" />
   </head>
   <body>
     <div class="login-wrap">
-      <div class="login-card stack">
+      <div class="login-card stack login-card-wide">
         <div class="title">DnD Мобильный Стол</div>
         <div class="subtitle">Выберите роль и войдите в сессию</div>
 
         <div class="login-role-row" role="tablist">
           <button type="button" class="login-role-btn active" data-role="player" id="rolePlayerBtn">
-            Вход как игрок
+            Игрок
           </button>
           <button type="button" class="login-role-btn" data-role="master" id="roleMasterBtn">
-            Вход как мастер
+            Мастер
+          </button>
+          <button type="button" class="login-role-btn" data-role="spectator" id="roleSpectatorBtn">
+            Зритель
           </button>
         </div>
 
@@ -37,12 +40,23 @@
           <button type="button" id="masterEnterBtn" class="primary">Создать лобби и войти</button>
         </div>
 
+        <div id="formSpectator" class="stack hidden">
+          <label class="field-label">Имя экрана (необязательно)</label>
+          <input id="spectatorName" placeholder="ТВ в зале" value="ТВ" autocomplete="nickname" />
+          <label class="field-label">Название лобби мастера</label>
+          <input id="spectatorLobbyTitle" placeholder="То же название, что у мастера" />
+          <button type="button" id="spectatorEnterBtn" class="primary">Открыть экран зрителя</button>
+          <div class="muted" style="font-size: 12px; line-height: 1.4">
+            Полноэкранно: карта, инициатива и журнал боя. Следует за опубликованной картой мастера.
+          </div>
+        </div>
+
         <div id="loginError" class="error-text"></div>
-        <div class="muted" style="font-size: 12px; line-height: 1.4">
+        <div id="loginHint" class="muted" style="font-size: 12px; line-height: 1.4">
           Игрок вводит то же название лобби, которое указал мастер. Мастер создаёт открытую сессию.
         </div>
       </div>
     </div>
-    <script type="module" src="/login.js?v=3"></script>
+    <script type="module" src="/login.js?v=4"></script>
   </body>
 </html>
