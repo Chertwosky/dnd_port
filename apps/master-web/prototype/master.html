@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps35" />
+    <link rel="stylesheet" href="/app.css?v=maps36" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -136,6 +136,9 @@
           <div class="card stack">
             <div class="subtitle">Герои за столом</div>
             <div class="muted">Залейте листы заранее — игроки выберут из списка. Или пусть импортируют сами.</div>
+            <div class="row" style="gap:8px;flex-wrap:wrap">
+              <button type="button" id="exportAllHeroesBtn">💾 Скачать всех</button>
+            </div>
             <div class="stack hero-import-block" style="gap:8px">
               <label class="file-pick">
                 <input type="file" id="masterHeroFileInput" accept=".json,application/json,text/json" multiple />
@@ -356,6 +359,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps35"></script>
+    <script type="module" src="/master.js?v=maps36"></script>
   </body>
 </html>

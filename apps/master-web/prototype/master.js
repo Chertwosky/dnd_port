@@ -85,6 +85,7 @@ const ui = {
   showToPlayersToggle: document.getElementById("showToPlayersToggle"),
   secretsList: document.getElementById("secretsList"),
   heroesList: document.getElementById("heroesList"),
+  exportAllHeroesBtn: document.getElementById("exportAllHeroesBtn"),
   masterHeroFileInput: document.getElementById("masterHeroFileInput"),
   masterHeroImportStatus: document.getElementById("masterHeroImportStatus"),
   masterHeroRawJson: document.getElementById("masterHeroRawJson"),
@@ -263,6 +264,7 @@ const state = {
   chatSeen: {},
   dragTokenId: null,
   openHeroId: null,
+  openHeroSnapshot: null,
   maps: [],
   activeMapId: null,
   playerMapId: null,
@@ -1428,7 +1430,10 @@ async function openHeroCard(characterId) {
           <div class="hs-player">👤 Игрок: <strong>${escapeHtml(c.playerName || "—")}</strong></div>
         </div>
       </div>
-      <button type="button" id="closeHeroCardBtn" class="hs-close">Закрыть</button>
+      <div class="hs-top-actions">
+        <button type="button" id="saveHeroSheetBtn" class="hs-download-btn" title="Скачать JSON этого героя">💾 Сохранить</button>
+        <button type="button" id="closeHeroCardBtn" class="hs-close">Закрыть</button>
+      </div>
     </div>
 
     <section class="hs-section hs-xp-section" id="heroXpSection"></section>
@@ -1526,8 +1531,15 @@ async function openHeroCard(characterId) {
   `;
   ui.heroModal.classList.remove("hidden");
   state.openHeroId = c.id;
+  state.openHeroSnapshot = c;
   if (ui.heroModalBody) ui.heroModalBody.dataset.characterId = c.id;
   document.getElementById("closeHeroCardBtn")?.addEventListener("click", closeHeroCard);
+  document.getElementById("saveHeroSheetBtn")?.addEventListener("click", () => {
+    downloadCharacterSheet(c);
+    if (ui.masterHeroImportStatus) {
+      ui.masterHeroImportStatus.textContent = `Сохранён лист: ${c.name}`;
+    }
+  });
   await renderHeroXpBar(c, { allowGrantXp: true });
   bindSheetRolls(ui.heroModalBody, {
     onRoll: ({ kind, ability, skillKey, label, weaponIndex, weaponName, damage, proficient }) => {
@@ -1605,6 +1617,7 @@ async function openHeroCard(characterId) {
 function closeHeroCard() {
   ui.heroModal?.classList.add("hidden");
   state.openHeroId = null;
+  state.openHeroSnapshot = null;
   if (ui.heroModalBody) {
     delete ui.heroModalBody.dataset.characterId;
     ui.heroModalBody.innerHTML = "";
@@ -3688,6 +3701,40 @@ function downloadJson(filename, data) {
   URL.revokeObjectURL(url);
 }
 
+function safeCharacterFilename(name, fallback = "character") {
+  return (
+    String(name || fallback)
+      .replace(/[^\wа-яёА-ЯЁ\- ]+/gi, "")
+      .trim()
+      .replace(/\s+/g, "-") || fallback
+  );
+}
+
+function downloadCharacterSheet(character) {
+  if (!character) return;
+  const stamp = new Date().toISOString().slice(0, 10);
+  const base = safeCharacterFilename(character.name);
+  downloadJson(`${base}-${stamp}.json`, character);
+}
+
+async function exportAllHeroSheets() {
+  const list = await call("/characters");
+  const heroes = Array.isArray(list) ? list : [];
+  if (!heroes.length) {
+    if (ui.masterHeroImportStatus) ui.masterHeroImportStatus.textContent = "Пул героев пуст";
+    return;
+  }
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadJson(`dnd-heroes-${stamp}.json`, {
+    exportedAt: new Date().toISOString(),
+    count: heroes.length,
+    characters: heroes
+  });
+  if (ui.masterHeroImportStatus) {
+    ui.masterHeroImportStatus.textContent = `Скачан файл со всеми героями (${heroes.length})`;
+  }
+}
+
 async function exportMaps(all) {
   const q = all ? "" : `?mapId=${encodeURIComponent(state.activeMapId || "")}`;
   const data = await call(`/maps/export${q}`);
@@ -4640,6 +4687,13 @@ ui.publishMapBtn?.addEventListener("click", () => publishActiveMap(true).catch(c
 ui.unpublishMapBtn?.addEventListener("click", () => publishActiveMap(false).catch(console.error));
 ui.exportMapsBtn?.addEventListener("click", () => exportMaps(true).catch(console.error));
 ui.exportOneMapBtn?.addEventListener("click", () => exportMaps(false).catch(console.error));
+ui.exportAllHeroesBtn?.addEventListener("click", () => {
+  exportAllHeroSheets().catch((error) => {
+    if (ui.masterHeroImportStatus) {
+      ui.masterHeroImportStatus.textContent = String(error.message || error);
+    }
+  });
+});
 ui.importMapsInput?.addEventListener("change", async (e) => {
   const file = e.target.files?.[0];
   try {
