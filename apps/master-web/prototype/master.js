@@ -3672,20 +3672,27 @@ async function loadAdventures() {
 }
 
 async function applyAdventure(id) {
-  if (!window.confirm("Загрузить шаблон приключения? Текущие карты будут заменены, НПС шаблона — в список.")) {
+  if (
+    !window.confirm(
+      "Загрузить шаблон приключения?\n• Карты будут заменены\n• НПС шаблона — в список\n• В пул героев добавятся 5 листов партии для выбора игроками"
+    )
+  ) {
     return;
   }
   if (ui.adventureStatus) ui.adventureStatus.textContent = "Загрузка…";
   const data = await call(`/adventures/${encodeURIComponent(id)}/apply`, {
     method: "POST",
-    body: JSON.stringify({ replaceNpcs: true })
+    body: JSON.stringify({ replaceNpcs: true, replaceParty: true })
   });
   state.npcs = await call("/npc");
   renderNpcs();
   await syncVision();
-  const notes = (data.adventure?.notes || []).join(" ");
+  const partyNames = (data.party || []).map((p) => p.name).filter(Boolean);
+  const notes = (data.adventure?.notes || []).slice(0, 2).join(" ");
   if (ui.adventureStatus) {
-    ui.adventureStatus.textContent = `Готово: ${data.adventure?.title || id}. ${notes}`;
+    ui.adventureStatus.textContent = partyNames.length
+      ? `Готово: ${data.adventure?.title || id}. Герои: ${partyNames.join(", ")}. ${notes}`
+      : `Готово: ${data.adventure?.title || id}. ${notes}`;
   }
 }
 

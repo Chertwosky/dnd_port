@@ -75,6 +75,7 @@ import {
   syncActiveMapAlias
 } from "./modules/map-docs.mjs";
 import { getAdventureTemplate, listAdventureTemplates } from "./data/adventures/index.mjs";
+import { loadPartyRawFiles, PARTY_CHARACTER_IDS } from "./data/sample-characters/party-roster.mjs";
 import {
   featuresForSubclassLevel,
   filterSubclasses,
@@ -92,7 +93,6 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
-const IGNORINA_PATH = path.join(__dirname, "data", "sample-characters", "ignorina.json");
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? "0.0.0.0";
@@ -687,19 +687,41 @@ function extractDocLines(data) {
   if (typeof data === "string") {
     return [data.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim()].filter(Boolean);
   }
-  const lines = [];
-  const walk = (node) => {
-    if (!node) return;
-    if (Array.isArray(node)) {
-      node.forEach(walk);
-      return;
-    }
-    if (typeof node.text === "string" && node.text.trim()) {
-      lines.push(node.text.trim());
-    }
-    if (node.content) walk(node.content);
+
+  const nodeText = (node) => {
+    const texts = [];
+    const walk = (n) => {
+      if (!n) return;
+      if (Array.isArray(n)) return n.forEach(walk);
+      if (typeof n.text === "string" && n.text.trim()) texts.push(n.text.trim());
+      if (n.content) walk(n.content);
+    };
+    walk(node);
+    return texts.join(" ").replace(/\s+/g, " ").trim();
   };
-  walk(data?.content ?? data);
+
+  const lines = [];
+  const walkBlocks = (nodes) => {
+    if (!nodes) return;
+    const list = Array.isArray(nodes) ? nodes : [nodes];
+    for (const node of list) {
+      if (!node) continue;
+      if (node.type === "paragraph" || node.type === "listItem" || node.type === "heading") {
+        const t = nodeText(node);
+        if (t) lines.push(t);
+        continue;
+      }
+      if (node.type === "bulletList" || node.type === "orderedList") {
+        walkBlocks(node.content);
+        continue;
+      }
+      if (node.content) walkBlocks(node.content);
+      else if (typeof node.text === "string" && node.text.trim()) {
+        lines.push(node.text.trim());
+      }
+    }
+  };
+  walkBlocks(data?.content ?? data);
   return lines;
 }
 
@@ -739,9 +761,16 @@ function mapCharacterFromLongStoryShort(rawFileContent, options = {}) {
 
   const weapons = (parsed.weaponsList ?? []).map((w) => ({
     name: w?.name?.value ?? "Оружие",
-    damage: w?.dmg?.value ?? "",
-    ability: w?.ability ?? "str",
-    proficient: Boolean(w?.isProf)
+    damage: String(w?.dmg?.value ?? "").trim(),
+    ability: String(w?.ability ?? "str").toLowerCase(),
+    proficient: Boolean(w?.isProf),
+    // LSS иногда даёт готовый бонус атаки (mod / modBonus)
+    attackBonus:
+      w?.mod?.value != null && Number.isFinite(Number(w.mod.value))
+        ? Number(w.mod.value)
+        : w?.modBonus != null && Number.isFinite(Number(w.modBonus))
+          ? Number(w.modBonus)
+          : null
   }));
 
   const avatar =
@@ -817,9 +846,9 @@ function mapCharacterFromLongStoryShort(rawFileContent, options = {}) {
     },
     skills: Object.entries(parsed.skills ?? {}).map(([key, skill]) => ({
       key,
-      label: skillLabelRu({ key, label: skill?.label }),
-      baseAbility: skill?.baseStat ?? "str",
-      proficiencyLevel: Number(skill?.isProf ?? 0)
+      label: skillLabelRu({ key, label: skill?.label || skill?.name }),
+      baseAbility: skill?.baseStat ?? skill?.baseAbility ?? "str",
+      proficiencyLevel: Number(skill?.isProf ?? 0) || 0
     })),
     weapons,
     equipment: equipmentLines,
@@ -871,13 +900,24 @@ function mapCharacterFromLongStoryShort(rawFileContent, options = {}) {
   return character;
 }
 
-async function loadSampleIgnorina() {
-  const raw = await readFile(IGNORINA_PATH, "utf8");
-  return mapCharacterFromLongStoryShort(raw, {
-    id: "character-ignorina-test",
-    isTest: true,
-    sourceFile: "ignorina.json"
-  });
+async function seedAdventureParty(game, { replace = true } = {}) {
+  const party = await loadPartyRawFiles();
+  const seeded = [];
+  if (replace) {
+    game.characters = (game.characters || []).filter((c) => !PARTY_CHARACTER_IDS.has(c.id));
+  }
+  for (const entry of party) {
+    const character = mapCharacterFromLongStoryShort(entry.raw, {
+      id: entry.id,
+      isTest: false,
+      sourceFile: entry.file
+    });
+    const idx = game.characters.findIndex((c) => c.id === character.id || c.name === character.name);
+    if (idx >= 0) game.characters[idx] = character;
+    else game.characters.push(character);
+    seeded.push({ id: character.id, name: character.name, level: character.level, className: character.className });
+  }
+  return seeded;
 }
 
 function syncHeroToken(game, character, position = { x: 2, y: 2 }) {
@@ -1111,13 +1151,6 @@ async function requestHandler(req, res) {
         members: [{ id: userId, name: masterName, role: "master", inventory: [] }],
         game: createLobbyGameState()
       };
-      try {
-        const sample = await loadSampleIgnorina();
-        lobby.game.characters.push(sample);
-        syncHeroToken(lobby.game, sample, { x: 2, y: 2 });
-      } catch (error) {
-        console.warn("Не удалось загрузить тестового героя:", error.message || error);
-      }
       lobbies.set(lobbyId, lobby);
       const session = { role: "master", lobbyId, userId, userName: masterName };
       sessions.set(token, session);
@@ -1928,6 +1961,12 @@ async function requestHandler(req, res) {
           }
         }
       }
+      let party = [];
+      try {
+        party = await seedAdventureParty(game, { replace: body.replaceParty !== false });
+      } catch (error) {
+        console.warn("Не удалось засеять пул героев приключения:", error.message || error);
+      }
       sendJson(res, 200, {
         ok: true,
         adventure: {
@@ -1938,7 +1977,14 @@ async function requestHandler(req, res) {
         maps: mapsPublicMeta(game, { forMaster: true }),
         activeMapId: game.activeMapId,
         playerMapId: game.playerMapId,
-        npcCount: (game.customNpcs || []).length
+        npcCount: (game.customNpcs || []).length,
+        party,
+        characters: game.characters.map((c) => ({
+          id: c.id,
+          name: c.name,
+          className: c.className,
+          level: c.level
+        }))
       });
       return;
     }
@@ -2444,7 +2490,11 @@ async function requestHandler(req, res) {
               ? Number(character.proficiencyBonus || 2)
               : Number(npc?.proficiencyBonus || 2);
             const proficient = weapon ? Boolean(weapon.proficient) : body.proficient !== false;
-            bonus = mod + (proficient ? pb : 0);
+            if (weapon?.attackBonus != null && Number.isFinite(Number(weapon.attackBonus))) {
+              bonus = Number(weapon.attackBonus);
+            } else {
+              bonus = mod + (proficient ? pb : 0);
+            }
             label = `Атака · ${weaponName}`;
             roll = rollD20();
             total = roll + bonus;
