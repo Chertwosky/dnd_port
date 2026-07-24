@@ -1,0 +1,13 @@
+{
+  "name": "@dnd/master-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"web build placeholder\"",
+    "test": "echo \"web tests placeholder\"",
+    "lint": "echo \"web lint placeholder\""
+  },
+  "dependencies": {
+    "@dnd/shared-types": "workspace:*"
+  }
+}

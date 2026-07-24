@@ -1,0 +1,13 @@
+{
+  "name": "@dnd/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo \"expo build placeholder\"",
+    "test": "echo \"mobile tests placeholder\"",
+    "lint": "echo \"mobile lint placeholder\""
+  },
+  "dependencies": {
+    "@dnd/shared-types": "workspace:*"
+  }
+}

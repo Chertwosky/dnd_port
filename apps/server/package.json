@@ -1,0 +1,22 @@
+{
+  "name": "@dnd/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "dev": "node src/http-server.mjs",
+    "start": "node src/http-server.mjs",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "echo \"no lint\""
+  },
+  "dependencies": {
+    "@dnd/rules-engine": "workspace:*",
+    "@dnd/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

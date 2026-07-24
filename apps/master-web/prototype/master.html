@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Мастер — DnD Стол</title>
+    <link rel="stylesheet" href="/app.css?v=maps23" />
+  </head>
+  <body>
+    <section id="screenLogin" class="login-wrap">
+      <div class="login-card stack">
+        <div class="title">Вход мастера</div>
+        <div class="subtitle">Создайте открытое лобби — игроки войдут по этому названию</div>
+        <label class="field-label">Ваше имя</label>
+        <input id="masterName" placeholder="Имя мастера" value="Мастер" />
+        <label class="field-label">Название лобби</label>
+        <input id="lobbyTitle" placeholder="Например: Кампания #1" value="Новая сессия" />
+        <button id="masterLoginBtn" class="primary">Войти и открыть лобби</button>
+        <div id="loginError" class="error-text"></div>
+        <a class="muted" href="/">← Назад к выбору роли</a>
+      </div>
+    </section>
+
+    <div id="screenApp" class="layout-master hidden">
+      <section class="master-stage">
+        <div class="master-stage-top stack">
+          <details class="card stack adventure-panel master-stage-chrome">
+            <summary class="subtitle">Приключения · шаблоны карт</summary>
+            <div id="adventureList" class="adventure-list"></div>
+            <div id="adventureStatus" class="muted"></div>
+          </details>
+
+          <details class="card stack paint-toolbar master-stage-chrome" open>
+            <summary class="subtitle">Рисование · группы под вокзал / молниевой поезд</summary>
+            <div id="texturePalette" class="texture-palette"></div>
+            <div id="secretVisibilityRow" class="row secret-visibility-row hidden">
+              <label class="toggle-label">
+                <input type="checkbox" id="showToPlayersToggle" checked />
+                Показать игрокам сейчас
+              </label>
+              <span class="muted">Сундук/тайник: сними галку — увидит только мастер</span>
+            </div>
+            <div class="row">
+              <span id="paintToolStatus" class="pill">инструмент: стена</span>
+              <span class="muted">ЛКМ — рисовать · ПКМ — ластик · перетаскивание токена</span>
+            </div>
+          </details>
+        </div>
+
+        <div class="map-tabs-bar">
+          <div id="mapTabs" class="map-tabs"></div>
+          <div class="row map-tabs-actions">
+            <button type="button" id="addMapBtn" title="Новая пустая карта">+ Карта</button>
+            <button type="button" id="publishMapBtn" class="primary" title="Показать активную карту игрокам">Показать игрокам</button>
+            <button type="button" id="unpublishMapBtn" title="Скрыть от игроков">Скрыть</button>
+            <button type="button" id="exportMapsBtn">💾 Сохранить набор</button>
+            <button type="button" id="exportOneMapBtn">💾 Эта карта</button>
+            <label class="file-pick map-import-pick">
+              <input type="file" id="importMapsInput" accept=".json,application/json" />
+              <span class="file-pick-btn">📂 Загрузить</span>
+            </label>
+          </div>
+          <div id="mapTabsStatus" class="muted"></div>
+        </div>
+
+        <div class="command-bar">
+          <select id="visionMode">
+            <option value="full">вся карта</option>
+            <option value="radius">радиус</option>
+            <option value="manual">вручную</option>
+          </select>
+          <input id="visionRadius" value="3" style="width: 90px" title="Клеток видимости" />
+          <button id="applyVisionBtn" class="primary">Применить видимость</button>
+          <button id="revealSampleBtn">Открыть зону (пример)</button>
+          <button id="openCombatBtn" class="warn">⚔ Бой</button>
+          <span class="map-zoom-controls row">
+            <button type="button" id="mapZoomOutBtn" title="Уменьшить карту">−</button>
+            <button type="button" id="mapZoomFitBtn" title="Вписать в окно">⊡</button>
+            <button type="button" id="mapZoomInBtn" title="Увеличить карту">+</button>
+            <span id="mapZoomLabel" class="pill" title="Масштаб клеток">100%</span>
+          </span>
+          <span id="visionStatus" class="pill"></span>
+        </div>
+
+        <div id="initiativeBar" class="init-bar hidden" aria-live="polite"></div>
+
+        <div class="map-wrap">
+          <div id="mapGrid" class="map-grid"></div>
+        </div>
+      </section>
+
+      <div
+        class="master-splitter"
+        id="masterSplitter"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Изменить высоту карты"
+        title="Потяните вверх/вниз — высота карты"
+      ></div>
+
+      <div class="master-dock">
+        <aside class="panel stack master-dock-col">
+          <div>
+            <div class="title">Панель мастера</div>
+            <div id="lobbyInfo" class="subtitle"></div>
+          </div>
+
+          <div class="card stack">
+            <div class="row">
+              <button id="preloadMonstersBtn" class="primary">Загрузить мобов из сети</button>
+              <button id="refreshMonstersBtn" title="Принудительно обновить с API">Обновить</button>
+            </div>
+            <div id="monsterProgressWrap" class="progress-wrap hidden">
+              <div class="progress-bar"><div id="monsterProgressFill" class="progress-fill"></div></div>
+              <div class="row">
+                <span id="monsterProgressPct" class="pill mono">0%</span>
+                <span id="monsterProgressMsg" class="muted">ожидание…</span>
+              </div>
+            </div>
+            <span id="monsterStatus" class="pill">не загружено</span>
+            <input id="monsterSearch" placeholder="Поиск моба…" />
+            <div id="monsterList" class="list monster-list"></div>
+          </div>
+
+          <div class="card stack">
+            <div class="subtitle">Герои за столом</div>
+            <div class="muted">Героев добавляют игроки (импорт листа). Мастер: ХП, уровень, лут, карта.</div>
+            <div id="heroesList" class="list"></div>
+          </div>
+
+          <div class="card stack">
+            <div class="subtitle">Создать NPC</div>
+            <input id="npcName" placeholder="Имя NPC" />
+            <div class="row">
+              <input id="npcHp" placeholder="ХП" value="22" />
+              <input id="npcAc" placeholder="КД" value="14" />
+            </div>
+            <button id="createNpcBtn">Создать NPC</button>
+            <div class="subtitle">NPC приключения</div>
+            <div class="muted">Клик или «Карточка» — статы, атаки, заметки. То же в списке токенов.</div>
+            <div id="npcList" class="list"></div>
+          </div>
+
+          <div class="card stack">
+            <div class="subtitle">Токен моба / NPC на карту</div>
+            <input id="tokenName" placeholder="Имя" value="Гоблин" />
+            <select id="tokenType">
+              <option value="monster">монстр</option>
+              <option value="npc">NPC</option>
+            </select>
+            <div class="row">
+              <input id="tokenX" placeholder="x" value="5" />
+              <input id="tokenY" placeholder="y" value="5" />
+            </div>
+            <div class="row">
+              <input id="tokenHpCurrent" placeholder="ХП сейчас" value="7" />
+              <input id="tokenHpMax" placeholder="ХП макс" value="7" />
+            </div>
+            <button id="addTokenBtn">Добавить на карту</button>
+            <span class="muted">Токены можно перетаскивать ЛКМ по карте</span>
+          </div>
+        </aside>
+
+        <aside class="panel stack master-dock-col">
+          <div class="row">
+            <button type="button" id="rightTabCombat" class="primary">Бой</button>
+            <button type="button" id="rightTabLoot">Лут</button>
+          </div>
+
+          <div id="rightPaneCombat" class="stack">
+            <div>
+              <div class="title">Бой</div>
+              <div class="subtitle">Инициатива · ХП · журнал</div>
+            </div>
+            <div class="row combat-controls">
+              <button type="button" id="openCombatBtnSide" class="primary">⚔ Участники</button>
+              <button type="button" id="autoInitBtn">Бросок NPC</button>
+            </div>
+            <div class="row combat-controls">
+              <button type="button" id="nextTurnBtn">След. ход</button>
+              <button type="button" id="endCombatBtn" class="warn">Конец боя</button>
+            </div>
+            <div id="combatStatus" class="muted">Бой не начат</div>
+            <div id="tokenPanel" class="list"></div>
+            <div class="card">
+              <div class="subtitle">Журнал боя</div>
+              <div id="combatLog" class="list"></div>
+            </div>
+            <button id="closeLobbyBtn" class="warn">Закрыть лобби</button>
+          </div>
+
+          <div id="rightPaneLoot" class="stack hidden">
+            <div>
+              <div class="title">Лут</div>
+              <div class="subtitle">Рандом · кампания · выдача · тайники на карте</div>
+            </div>
+
+            <div class="card stack secrets-panel">
+              <div class="subtitle">Сундуки и тайники на карте</div>
+              <div class="muted">Соседние клетки = один объект. Показать/скрыть игрокам — кнопками в списке.</div>
+              <div id="secretsList" class="list"></div>
+            </div>
+
+            <div class="card stack">
+              <div class="subtitle">Случайный предмет (Open5e)</div>
+              <div id="rarityButtons" class="rarity-row"></div>
+              <div class="row">
+                <button type="button" id="lootRandomBtn" class="primary">Вытянуть</button>
+                <button type="button" id="lootPreloadBtn">Загрузить каталог</button>
+              </div>
+              <span id="lootCatalogStatus" class="pill">каталог не загружен</span>
+              <div id="lootLastDrop" class="loot-last-drop hidden"></div>
+            </div>
+
+            <div class="card stack">
+              <div class="subtitle">Выдать выбранный предмет</div>
+              <select id="lootRecipient"></select>
+              <span class="muted">Сначала выберите предмет кнопкой «Выдать» в списке</span>
+            </div>
+
+            <div class="card stack">
+              <div class="subtitle">Дроп сессии</div>
+              <div id="lootDropsList" class="list loot-scroll-list"></div>
+            </div>
+
+            <div class="card stack">
+              <div class="subtitle">Список кампании</div>
+              <div id="lootCampaignList" class="list loot-scroll-list"></div>
+            </div>
+
+            <div class="card stack">
+              <div class="subtitle">Журнал выдачи</div>
+              <div id="lootGrantsList" class="list"></div>
+            </div>
+
+            <div class="card stack">
+              <div class="subtitle">Свой предмет кампании</div>
+              <input id="lootName" placeholder="Название" />
+              <select id="lootRarityCustom"></select>
+              <input id="lootType" placeholder="Тип (оружие, кольцо…)" value="Чудесный предмет" />
+              <textarea id="lootDesc" placeholder="Описание"></textarea>
+              <div class="row">
+                <input id="lootStatAttack" placeholder="Бонус атаки" />
+                <input id="lootStatDamage" placeholder="Урон" />
+              </div>
+              <div class="row">
+                <input id="lootStatAc" placeholder="КД" />
+                <input id="lootStatCharges" placeholder="Заряды" />
+              </div>
+              <input id="lootStatNotes" placeholder="Заметки / статы" />
+              <label class="toggle-label">
+                <input type="checkbox" id="lootAttune" />
+                Требует настройку
+              </label>
+              <div class="row">
+                <button type="button" id="lootAddDropBtn">В дроп сессии</button>
+                <button type="button" id="lootAddCampaignBtn" class="primary">В список кампании</button>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <div id="monsterModal" class="modal hidden">
+      <div class="modal-backdrop" id="monsterModalClose"></div>
+      <div class="modal-card stack" id="monsterModalBody"></div>
+    </div>
+
+    <div id="lootModal" class="modal hidden">
+      <div class="modal-backdrop" id="lootModalClose"></div>
+      <div class="modal-card stack loot-modal-card" id="lootModalBody"></div>
+    </div>
+
+    <div id="heroModal" class="modal hidden">
+      <div class="modal-backdrop" id="heroModalClose"></div>
+      <div class="modal-card stack hero-modal-card" id="heroModalBody"></div>
+    </div>
+
+    <div id="levelUpModal" class="modal hidden">
+      <div class="modal-backdrop" id="levelUpModalClose"></div>
+      <div class="modal-card stack levelup-modal-card" id="levelUpModalBody"></div>
+    </div>
+
+    <div id="combatModal" class="modal hidden">
+      <div class="modal-backdrop" id="combatModalClose"></div>
+      <div class="modal-card stack combat-modal-card">
+        <div class="title">Участники боя</div>
+        <div class="subtitle">Отметьте героев и NPC/монстров. Можно добавлять новых уже после старта — они тоже кинут инициативу.</div>
+        <div id="combatPickList" class="list combat-pick-list"></div>
+        <div class="row">
+          <button type="button" id="combatSelectAllBtn">Все на карте</button>
+          <button type="button" id="combatSelectNewBtn">Только новые</button>
+        </div>
+        <div class="row">
+          <button type="button" id="combatCancelBtn">Отмена</button>
+          <button type="button" id="combatConfirmBtn" class="primary">В бой</button>
+        </div>
+        <div id="combatModalError" class="error-text"></div>
+      </div>
+    </div>
+
+    <script type="module" src="/master.js?v=maps23"></script>
+  </body>
+</html>

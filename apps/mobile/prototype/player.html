@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Игрок — DnD Стол</title>
+    <link rel="stylesheet" href="/app.css?v=maps23" />
+  </head>
+  <body>
+    <section id="screenLogin" class="login-wrap">
+      <div class="login-card stack">
+        <div class="title">Вход игрока</div>
+        <div class="subtitle">Введите имя и название лобби мастера</div>
+        <label class="field-label">Ваше имя</label>
+        <input id="playerName" placeholder="Имя игрока" />
+        <label class="field-label">Название лобби</label>
+        <input id="lobbyTitle" placeholder="Точно как у мастера" />
+        <button id="playerLoginBtn" class="primary">Присоединиться</button>
+        <div id="loginError" class="error-text"></div>
+        <button type="button" id="showLobbyListBtn">Или выбрать из списка открытых</button>
+        <a class="muted" href="/">← Назад к выбору роли</a>
+      </div>
+    </section>
+
+    <section id="screenLobbyPick" class="layout-player hidden">
+      <div class="panel stack">
+        <div class="title">Открытые лобби</div>
+        <div class="subtitle">Выберите сессию мастера</div>
+        <div id="lobbyList" class="list"></div>
+        <button id="refreshLobbiesBtn">Обновить список</button>
+        <div id="lobbyPickError" class="error-text"></div>
+      </div>
+    </section>
+
+    <div id="screenApp" class="layout-player hidden">
+      <div class="row">
+        <span id="sessionInfo" class="pill"></span>
+      </div>
+      <div class="row">
+        <button id="screenLobbyBtn" class="primary">Лобби</button>
+        <button id="screenBindBtn">Персонаж</button>
+        <button id="screenCombatBtn">Бой</button>
+      </div>
+
+      <section id="screenLobby" class="screen active panel stack">
+        <div class="title">Лобби</div>
+        <div class="subtitle">Пока персонаж не выбран — вы зритель</div>
+        <div id="lobbyState" class="card">роль: зритель</div>
+        <div id="membersList" class="list"></div>
+        <button id="goBindBtn" class="primary">Выбрать персонажа</button>
+      </section>
+
+      <section id="screenBind" class="screen panel stack">
+        <div id="bindSetup" class="stack">
+          <div class="title">Персонаж</div>
+          <div class="subtitle">Импорт JSON или выбор из списка — затем привязка</div>
+          <select id="characterSelect"></select>
+          <div class="row">
+            <button id="bindSelectedBtn" class="primary">Привязать и в бой</button>
+            <button id="refreshCharactersBtn">Обновить</button>
+          </div>
+          <div class="stack" style="gap:8px">
+            <div class="subtitle">Импорт листа (JSON)</div>
+            <label class="file-pick">
+              <input type="file" id="characterFileInput" accept=".json,application/json,text/json" />
+              <span id="characterFileLabel" class="file-pick-btn">📁 Выбрать JSON-файл</span>
+            </label>
+            <div id="characterFileName" class="muted">Файл не выбран</div>
+            <button type="button" id="importCharacterBtn" class="primary">Импорт и привязать</button>
+            <details class="import-paste">
+              <summary class="muted">Или вставить JSON текстом</summary>
+              <textarea id="characterRawJson" placeholder="Вставьте JSON файла персонажа целиком"></textarea>
+            </details>
+          </div>
+          <div id="bindStatus" class="pill"></div>
+        </div>
+        <div id="playerSheetWrap" class="hidden stack">
+          <div class="row" style="justify-content:space-between;align-items:center;gap:8px">
+            <div style="min-width:0">
+              <div class="title">Лист персонажа</div>
+              <div class="subtitle">Только просмотр</div>
+            </div>
+            <div class="row" style="gap:8px;flex-shrink:0">
+              <button type="button" id="downloadCharacterBtn">⬇ Скачать</button>
+              <button type="button" id="changeCharacterBtn">Сменить</button>
+            </div>
+          </div>
+          <div id="playerSheet" class="hero-sheet-inline"></div>
+        </div>
+      </section>
+
+      <section id="screenCombat" class="screen stack">
+        <div class="row">
+          <div class="card">ХП <span id="combatHp" class="mono">—</span></div>
+          <div class="card">Класс брони <span id="combatAc" class="mono">—</span></div>
+          <div class="card">Роль <span id="combatRole" class="mono">зритель</span></div>
+        </div>
+
+        <div id="combatAbilities" class="combat-abil-row" aria-label="Характеристики">
+          <div class="combat-abil" data-abil="str"><span class="combat-abil-label">Сил</span><span class="combat-abil-score mono">—</span><span class="combat-abil-mod mono">—</span></div>
+          <div class="combat-abil" data-abil="dex"><span class="combat-abil-label">Лов</span><span class="combat-abil-score mono">—</span><span class="combat-abil-mod mono">—</span></div>
+          <div class="combat-abil" data-abil="con"><span class="combat-abil-label">Тел</span><span class="combat-abil-score mono">—</span><span class="combat-abil-mod mono">—</span></div>
+          <div class="combat-abil" data-abil="int"><span class="combat-abil-label">Инт</span><span class="combat-abil-score mono">—</span><span class="combat-abil-mod mono">—</span></div>
+          <div class="combat-abil" data-abil="wis"><span class="combat-abil-label">Мдр</span><span class="combat-abil-score mono">—</span><span class="combat-abil-mod mono">—</span></div>
+          <div class="combat-abil" data-abil="cha"><span class="combat-abil-label">Хар</span><span class="combat-abil-score mono">—</span><span class="combat-abil-mod mono">—</span></div>
+        </div>
+
+        <div id="playerInitActions" class="player-init-actions hidden">
+          <button type="button" id="rollInitiativeBtn" class="primary init-roll-btn">🎲 Бросить инициативу</button>
+          <div id="initiativeRollResult" class="muted"></div>
+        </div>
+
+        <div id="playerInitiativeBar" class="init-bar hidden" aria-live="polite"></div>
+
+        <div class="player-map-toolbar">
+          <div id="playerMapTabs" class="map-tabs player-map-tabs"></div>
+          <button type="button" id="mapInspectOpenBtn" class="map-inspect-open" title="Осмотр карты" aria-label="Осмотр карты">
+            ⛶
+          </button>
+        </div>
+        <div class="player-map" id="playerMapWrap">
+          <div id="playerMapGrid" class="player-map-grid"></div>
+        </div>
+
+        <div class="player-sheet stack">
+          <div class="tabs">
+            <button data-tab="combat" class="primary">Бой</button>
+            <button data-tab="actions">Действия</button>
+            <button data-tab="spells">Заклинания</button>
+            <button data-tab="inventory">Инвентарь</button>
+            <button data-tab="level">Уровень</button>
+            <button data-tab="notes">Заметки</button>
+          </div>
+          <div id="tabBody" class="card"></div>
+        </div>
+      </section>
+    </div>
+
+    <div id="levelUpModal" class="modal hidden">
+      <div class="modal-backdrop" id="levelUpModalClose"></div>
+      <div class="modal-card stack levelup-modal-card" id="levelUpModalBody"></div>
+    </div>
+
+    <div id="mapInspectOverlay" class="map-inspect-overlay hidden" aria-hidden="true">
+      <div class="map-inspect-bar">
+        <button type="button" id="mapInspectCloseBtn" class="map-inspect-close" aria-label="Закрыть">✕</button>
+        <span id="mapInspectTitle" class="map-inspect-title">Карта</span>
+        <div class="map-inspect-zoom">
+          <button type="button" id="mapInspectZoomOut" aria-label="Уменьшить">−</button>
+          <button type="button" id="mapInspectZoomFit" aria-label="Вписать">⊡</button>
+          <button type="button" id="mapInspectZoomIn" aria-label="Увеличить">+</button>
+          <span id="mapInspectZoomLabel" class="mono">100%</span>
+        </div>
+      </div>
+      <div id="mapInspectViewport" class="map-inspect-viewport">
+        <div id="mapInspectStage" class="map-inspect-stage">
+          <div id="mapInspectGrid" class="player-map-grid"></div>
+        </div>
+      </div>
+      <div class="map-inspect-hint muted">Карта повёрнута боком · щипок — масштаб · палец — сдвиг</div>
+    </div>
+
+    <div id="npcSheetModal" class="modal hidden">
+      <div class="modal-backdrop" data-npc-sheet-backdrop></div>
+      <div class="modal-card stack npc-sheet-card" id="npcSheetModalBody"></div>
+    </div>
+
+    <script type="module" src="/player.js?v=32"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "pnpm install",
+  "buildCommand": "echo \"runtime is plain node mjs\"",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/api" }
+  ],
+  "functions": {
+    "api/index.mjs": {
+      "includeFiles": "{apps/master-web/prototype/**,apps/mobile/prototype/**,apps/server/src/data/**,apps/server/src/modules/**}",
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  }
+}

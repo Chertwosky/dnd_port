@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DnD Стол — вход</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <div class="login-wrap">
+      <div class="login-card stack">
+        <div class="title">DnD Мобильный Стол</div>
+        <div class="subtitle">Выберите роль и войдите в сессию</div>
+
+        <div class="login-role-row" role="tablist">
+          <button type="button" class="login-role-btn active" data-role="player" id="rolePlayerBtn">
+            Вход как игрок
+          </button>
+          <button type="button" class="login-role-btn" data-role="master" id="roleMasterBtn">
+            Вход как мастер
+          </button>
+        </div>
+
+        <div id="formPlayer" class="stack">
+          <label class="field-label">Ваше имя</label>
+          <input id="playerName" placeholder="Имя игрока" autocomplete="nickname" />
+          <label class="field-label">Название лобби мастера</label>
+          <input id="playerLobbyTitle" placeholder="Точно как у мастера, например: Новая сессия" />
+          <button type="button" id="playerEnterBtn" class="primary">Присоединиться</button>
+        </div>
+
+        <div id="formMaster" class="stack hidden">
+          <label class="field-label">Ваше имя</label>
+          <input id="masterName" placeholder="Имя мастера" value="Мастер" autocomplete="nickname" />
+          <label class="field-label">Название лобби</label>
+          <input id="masterLobbyTitle" placeholder="Например: Кампания #1" value="Новая сессия" />
+          <button type="button" id="masterEnterBtn" class="primary">Создать лобби и войти</button>
+        </div>
+
+        <div id="loginError" class="error-text"></div>
+        <div class="muted" style="font-size: 12px; line-height: 1.4">
+          Игрок вводит то же название лобби, которое указал мастер. Мастер создаёт открытую сессию.
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/login.js?v=3"></script>
+  </body>
+</html>
