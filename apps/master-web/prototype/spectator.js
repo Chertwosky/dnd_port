@@ -153,16 +153,11 @@ function fillMapGrid(width, height) {
         const token = document.createElement("div");
         const isHero = t.type === "player" || Boolean(t.characterId);
         const showNames = Boolean(state.showTokenNames && isHero);
-        token.className = `token ${t.type || "npc"}${showNames ? " show-name-label" : ""}`;
+        token.className = `token ${t.type || "npc"}`;
         const shortName = String(t.name || "?").trim();
         if (t.portraitUrl) {
           token.classList.add("has-portrait");
           token.style.backgroundImage = `url("${t.portraitUrl}")`;
-          token.innerHTML = `<span class="token-name-tag">${escapeHtml(shortName.slice(0, showNames ? 14 : 10))}</span>`;
-        } else if (showNames) {
-          token.innerHTML = `<span class="token-name-tag">${escapeHtml(shortName.slice(0, 14))}</span><span class="token-initials">${escapeHtml(
-            shortName.slice(0, 2).toUpperCase()
-          )}</span>`;
         } else {
           token.textContent = shortName.slice(0, 2).toUpperCase();
         }
@@ -172,6 +167,13 @@ function fillMapGrid(width, height) {
           token.title = t.name || "";
         }
         cell.appendChild(token);
+        if (showNames) {
+          cell.classList.add("has-token-caption");
+          const caption = document.createElement("span");
+          caption.className = "cell-token-caption";
+          caption.textContent = shortName;
+          cell.appendChild(caption);
+        }
       }
 
       ui.mapGrid.appendChild(cell);
@@ -184,6 +186,7 @@ function renderMap() {
   const height = Number(state.vision?.height) || 15;
   state.mapFitCols = width;
   state.mapFitRows = height;
+  ui.mapWrap?.classList.toggle("names-on", Boolean(state.showTokenNames));
   fillMapGrid(width, height);
   ensureMapFitObserver();
   applyMapFit(ui.mapWrap, ui.mapGrid, width, height);
@@ -298,5 +301,6 @@ ui.showNamesBtn?.addEventListener("click", () => {
   state.showTokenNames = !state.showTokenNames;
   ui.showNamesBtn.classList.toggle("primary", state.showTokenNames);
   ui.showNamesBtn.setAttribute("aria-pressed", state.showTokenNames ? "true" : "false");
+  ui.mapWrap?.classList.toggle("names-on", state.showTokenNames);
   renderMap();
 });

@@ -763,46 +763,50 @@ button.warn {
   font-size: 0;
 }
 
-.map-compact .token .token-name-tag {
-  display: none;
-}
-
-.map-compact .token.show-name-label .token-name-tag {
-  display: block;
-}
-
-.token.show-name-label {
+/* Подпись имени — отдельный слой на клетке, не внутри токена */
+.cell.has-token-caption {
   overflow: visible;
-  z-index: 4;
+  z-index: 14;
 }
 
-.token.show-name-label .token-name-tag {
+.cell-token-caption {
   position: absolute;
   left: 50%;
-  bottom: calc(100% + 2px);
-  transform: translateX(-50%);
+  top: 0;
+  transform: translate(-50%, calc(-100% - 3px));
+  z-index: 30;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(220px, 40vw);
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(15, 23, 42, 0.3);
+  color: #0f172a;
+  font-size: max(11px, calc(var(--map-cell-size) * 0.85));
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  text-align: center;
   white-space: nowrap;
-  max-width: 88px;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 1px 5px;
-  border-radius: 6px;
-  background: rgba(8, 12, 20, 0.92);
-  border: 1px solid #c9a24a;
-  color: #fde68a;
-  font-size: max(9px, calc(var(--map-cell-size) * 0.55));
-  font-weight: 700;
-  line-height: 1.2;
   pointer-events: none;
-  z-index: 6;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-.token.show-name-label .token-initials {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  font-size: max(6px, calc(var(--map-cell-size) * 0.42));
+.player-map.names-on,
+.map-wrap.names-on,
+.spectator-map-wrap.names-on {
+  overflow: visible;
+  padding-top: max(24px, calc(var(--map-cell-size) * 1.6));
+}
+
+.player-map.names-on .player-map-grid,
+.map-wrap.names-on .player-map-grid,
+.spectator-map-wrap.names-on .player-map-grid,
+.map-inspect-stage.names-on .player-map-grid {
+  overflow: visible;
 }
 
 .token.dragging {
@@ -818,17 +822,7 @@ button.warn {
 }
 
 .token .token-name-tag {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  font-size: 9px;
-  background: rgba(0, 0, 0, 0.55);
-  padding: 1px 2px;
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: none !important;
 }
 
 .token.player {

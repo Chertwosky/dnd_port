@@ -948,7 +948,10 @@ function renderMap() {
   state.mapFitCols = width;
   state.mapFitRows = height;
   const wrap = ui.mapGrid?.closest(".map-wrap");
-  if (wrap) applyMapFit(wrap, ui.mapGrid, width, height);
+  if (wrap) {
+    wrap.classList.add("names-on");
+    applyMapFit(wrap, ui.mapGrid, width, height);
+  }
   ensureMapFitObserver();
   hideMapCellTip();
 
@@ -995,15 +998,15 @@ function renderMap() {
       const token = tokenMap.get(cellKey);
       if (token) {
         const node = document.createElement("div");
+        const shortName = String(token.name || "?").trim();
         node.className = `token ${token.type}${state.dragTokenId === token.id ? " dragging" : ""}`;
-        node.title = `${token.name} · клик — карточка · тянуть — переместить`;
+        node.title = `${shortName} · клик — карточка · тянуть — переместить`;
         node.dataset.tokenId = token.id;
         if (token.portraitUrl) {
           node.classList.add("has-portrait");
           node.style.backgroundImage = `url("${token.portraitUrl}")`;
-          node.innerHTML = `<span class="token-name-tag">${escapeHtml(token.name.slice(0, 8))}</span>`;
         } else {
-          node.textContent = token.name.slice(0, 2).toUpperCase();
+          node.textContent = shortName.slice(0, 2).toUpperCase();
         }
         node.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
@@ -1021,7 +1024,12 @@ function renderMap() {
           const dist = Math.hypot(e.clientX - state.dragTokenOrigin.x, e.clientY - state.dragTokenOrigin.y);
           if (dist > 6) state.dragTokenMoved = true;
         });
+        cell.classList.add("has-token-caption");
+        const caption = document.createElement("span");
+        caption.className = "cell-token-caption";
+        caption.textContent = shortName;
         cell.appendChild(node);
+        cell.appendChild(caption);
       }
 
       cell.addEventListener("mousedown", (e) => {

@@ -859,18 +859,13 @@ function fillMapGrid(gridEl, width, height) {
         const showNames = Boolean(state.showTokenNames && isHero);
         token.className = `token ${t.type}${isMine ? " mine" : ""}${
           state.selectedTokenId === t.id ? " selected" : ""
-        }${showNames ? " show-name-label" : ""}`;
+        }`;
         token.dataset.tokenId = t.id;
         if (isMine) token.dataset.mine = "1";
         const shortName = String(t.name || "?").trim();
         if (t.portraitUrl) {
           token.classList.add("has-portrait");
           token.style.backgroundImage = `url("${t.portraitUrl}")`;
-          token.innerHTML = `<span class="token-name-tag">${escapeHtml(shortName.slice(0, showNames ? 14 : 8))}</span>`;
-        } else if (showNames) {
-          token.innerHTML = `<span class="token-name-tag">${escapeHtml(shortName.slice(0, 14))}</span><span class="token-initials">${escapeHtml(
-            shortName.slice(0, 2).toUpperCase()
-          )}</span>`;
         } else {
           token.textContent = shortName.slice(0, 2).toUpperCase();
         }
@@ -894,6 +889,13 @@ function fillMapGrid(gridEl, width, height) {
           openMapTokenSheet(t).catch((err) => showRollToast(String(err.message || err)));
         });
         cell.appendChild(token);
+        if (showNames) {
+          cell.classList.add("has-token-caption");
+          const caption = document.createElement("span");
+          caption.className = "cell-token-caption";
+          caption.textContent = shortName;
+          cell.appendChild(caption);
+        }
       }
 
       if (isVisible) {
@@ -1033,6 +1035,7 @@ function fitInspectToViewport() {
 function renderInspectMap() {
   if (!ui.mapInspectGrid || !state.mapFitCols || !state.mapFitRows) return;
   ui.mapInspectGrid.style.setProperty("--map-cell-size", `${mapInspect.baseCell}px`);
+  ui.mapInspectStage?.classList.toggle("names-on", Boolean(state.showTokenNames));
   fillMapGrid(ui.mapInspectGrid, state.mapFitCols, state.mapFitRows);
   if (ui.mapInspectTitle) ui.mapInspectTitle.textContent = currentMapTitle();
 }
@@ -1166,7 +1169,10 @@ function renderMap() {
   state.mapFitRows = height;
   mapInspect.lastMapId = state.mapVision?.mapId ?? null;
   const wrap = ui.playerMapWrap || ui.playerMapGrid?.closest(".player-map");
-  if (wrap) applyMapFit(wrap, ui.playerMapGrid, width, height);
+  if (wrap) {
+    wrap.classList.toggle("names-on", Boolean(state.showTokenNames));
+    applyMapFit(wrap, ui.playerMapGrid, width, height);
+  }
   ensurePlayerMapFitObserver();
 
   fillMapGrid(ui.playerMapGrid, width, height);
@@ -2563,6 +2569,9 @@ ui.playerShowNamesBtn?.addEventListener("click", () => {
   state.showTokenNames = !state.showTokenNames;
   ui.playerShowNamesBtn.classList.toggle("primary", state.showTokenNames);
   ui.playerShowNamesBtn.setAttribute("aria-pressed", state.showTokenNames ? "true" : "false");
+  const wrap = ui.playerMapWrap || ui.playerMapGrid?.closest(".player-map");
+  wrap?.classList.toggle("names-on", state.showTokenNames);
+  ui.mapInspectStage?.classList.toggle("names-on", state.showTokenNames);
   renderMap();
   if (mapInspect.open) renderInspectMap();
 });
