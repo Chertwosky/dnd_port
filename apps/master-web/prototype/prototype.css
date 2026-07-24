@@ -1440,6 +1440,71 @@ button.npc-check {
   min-width: 40px;
 }
 
+.player-combat-tools {
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.player-weapon-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.player-weapon-empty {
+  font-size: 12px;
+  padding: 4px 2px;
+}
+
+.player-weapon-chip {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  flex: 1 1 160px;
+  min-width: 148px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(201, 162, 74, 0.35);
+  background: linear-gradient(155deg, #2a2418, #161c28 70%);
+}
+
+.player-weapon-ico {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.player-weapon-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.player-weapon-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f3e6c4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-weapon-dmg {
+  font-size: 11px;
+  color: #b8c4d6;
+  margin: 2px 0 6px;
+}
+
+.player-weapon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.player-weapon-actions .hs-weapon-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
 .hs-item-soft {
   background: #171f2c;
   border-color: #2a3a50;

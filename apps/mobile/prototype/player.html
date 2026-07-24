@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Игрок — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps29" />
+    <link rel="stylesheet" href="/app.css?v=maps30" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -113,14 +113,17 @@
 
         <div id="playerInitiativeBar" class="init-bar hidden" aria-live="polite"></div>
 
-        <div class="map-dice-strip" id="playerMapDice" aria-label="Кубики">
-          <span class="map-dice-label">Кубики</span>
-          <button type="button" class="chat-die-btn" data-map-die="4">d4</button>
-          <button type="button" class="chat-die-btn" data-map-die="6">d6</button>
-          <button type="button" class="chat-die-btn" data-map-die="8">d8</button>
-          <button type="button" class="chat-die-btn" data-map-die="10">d10</button>
-          <button type="button" class="chat-die-btn" data-map-die="12">d12</button>
-          <button type="button" class="chat-die-btn" data-map-die="20">d20</button>
+        <div class="player-combat-tools stack" id="playerCombatTools">
+          <div id="playerWeaponStrip" class="player-weapon-strip" aria-label="Оружие"></div>
+          <div class="map-dice-strip" id="playerMapDice" aria-label="Кубики">
+            <span class="map-dice-label">Кубики</span>
+            <button type="button" class="chat-die-btn" data-map-die="4">d4</button>
+            <button type="button" class="chat-die-btn" data-map-die="6">d6</button>
+            <button type="button" class="chat-die-btn" data-map-die="8">d8</button>
+            <button type="button" class="chat-die-btn" data-map-die="10">d10</button>
+            <button type="button" class="chat-die-btn" data-map-die="12">d12</button>
+            <button type="button" class="chat-die-btn" data-map-die="20">d20</button>
+          </div>
         </div>
 
         <div class="player-map-toolbar">
@@ -182,6 +185,6 @@
       <div class="modal-card stack npc-sheet-card" id="npcSheetModalBody"></div>
     </div>
 
-    <script type="module" src="/player.js?v=37"></script>
+    <script type="module" src="/player.js?v=38"></script>
   </body>
 </html>

@@ -92,6 +92,8 @@ const ui = {
   rollInitiativeBtn: document.getElementById("rollInitiativeBtn"),
   initiativeRollResult: document.getElementById("initiativeRollResult"),
   playerInitiativeBar: document.getElementById("playerInitiativeBar"),
+  playerWeaponStrip: document.getElementById("playerWeaponStrip"),
+  playerMapDice: document.getElementById("playerMapDice"),
   npcSheetModal: document.getElementById("npcSheetModal"),
   npcSheetModalBody: document.getElementById("npcSheetModalBody"),
   tabBody: document.getElementById("tabBody"),
@@ -459,6 +461,7 @@ function renderCombatHeader() {
       el.querySelector(".combat-abil-mod").textContent = "—";
       el.title = "";
     });
+    renderPlayerWeaponStrip();
     return;
   }
   ui.combatHp.textContent = `${state.character.vitals.hpCurrent}/${state.character.vitals.hpMax}`;
@@ -472,6 +475,66 @@ function renderCombatHeader() {
     el.querySelector(".combat-abil-mod").textContent = fmtModLocal(a.modifier);
     el.title = `${labels[key] || key}: ${a.score ?? "—"} (${fmtModLocal(a.modifier)}) · клик — бросок`;
     el.classList.add("hs-rollable");
+  });
+  renderPlayerWeaponStrip();
+}
+
+function weaponIconLocal(name) {
+  const n = String(name || "").toLowerCase();
+  if (/лук|арбалет|стрел/.test(n)) return "🏹";
+  if (/кинжал|нож|серп|плеть/.test(n)) return "🗡️";
+  if (/посох|жезл/.test(n)) return "🪄";
+  if (/щит/.test(n)) return "🛡️";
+  if (/рог/.test(n)) return "🦌";
+  return "⚔️";
+}
+
+function renderPlayerWeaponStrip() {
+  if (!ui.playerWeaponStrip) return;
+  const weapons = state.character?.weapons || [];
+  if (!weapons.length) {
+    ui.playerWeaponStrip.innerHTML = `<div class="muted player-weapon-empty">Оружие появится после привязки листа</div>`;
+    return;
+  }
+  ui.playerWeaponStrip.innerHTML = weapons
+    .map((w, idx) => {
+      const dmg = String(w.damage || "").trim();
+      const canDmg = Boolean(dmg);
+      return `<div class="player-weapon-chip">
+        <div class="player-weapon-ico">${weaponIconLocal(w.name)}</div>
+        <div class="player-weapon-body">
+          <div class="player-weapon-name">${escapeHtml(w.name || "Оружие")}</div>
+          <div class="player-weapon-dmg mono">${escapeHtml(dmg || "—")}</div>
+          <div class="player-weapon-actions">
+            <button type="button" class="hs-weapon-btn" data-roll="attack" data-weapon-index="${idx}" data-weapon-name="${escapeAttr(w.name || "")}" data-ability="${escapeAttr(String(w.ability || "str").toLowerCase())}" data-proficient="${w.proficient ? "1" : "0"}">Атака</button>
+            <button type="button" class="hs-weapon-btn hs-weapon-btn-dmg" data-roll="damage" data-weapon-index="${idx}" data-weapon-name="${escapeAttr(w.name || "")}" data-damage="${escapeAttr(dmg)}" ${canDmg ? "" : "disabled"}>Урон</button>
+          </div>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+function setupPlayerWeaponStrip() {
+  if (!ui.playerWeaponStrip || ui.playerWeaponStrip.dataset.bound === "1") return;
+  ui.playerWeaponStrip.dataset.bound = "1";
+  ui.playerWeaponStrip.addEventListener("click", (e) => {
+    const btn = e.target.closest?.("[data-roll]");
+    if (!btn || btn.disabled) return;
+    if (!state.character?.id) {
+      showRollToast("Сначала привяжите персонажа");
+      return;
+    }
+    const kind = btn.getAttribute("data-roll");
+    requestCombatRoll({
+      kind,
+      weaponIndex: Number(btn.getAttribute("data-weapon-index")),
+      weaponName: btn.getAttribute("data-weapon-name") || undefined,
+      formula: btn.getAttribute("data-damage") || undefined,
+      ability: btn.getAttribute("data-ability") || undefined,
+      proficient: btn.getAttribute("data-proficient") === "1",
+      characterId: state.character.id
+    }).catch((error) => showRollToast(String(error.message || error)));
   });
 }
 
@@ -2208,6 +2271,8 @@ window.addEventListener("keydown", (e) => {
 
 setupTabs();
 setupCombatAbilityRolls();
+setupPlayerWeaponStrip();
+renderPlayerWeaponStrip();
 
 if (!(await restoreSession())) {
   showLogin();

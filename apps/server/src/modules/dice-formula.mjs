@@ -1,6 +1,9 @@
-/** Parse and roll dice formulas like "1d8+3", "2d6 + 1 колющий", "1d4/1d6". */
+/** Parse and roll dice formulas like "1d8+3", "1к8+4 рубящий", "2d6 + 1". */
 
 export const STANDARD_DICE = [4, 6, 8, 10, 12, 20];
+
+/** LSS RU uses «к» (ka) for dice: 1к8+4 · also d / д */
+const DICE_SEP = "[dдкDkК]";
 
 /**
  * @param {string} raw
@@ -14,7 +17,7 @@ export function parseDiceFormula(raw) {
   // Версатиль / альтернативы: берём первый вариант
   const text = source.split("/")[0].trim();
   const dice = [];
-  const re = /(\d+)\s*[dд]\s*(\d+)/gi;
+  const re = new RegExp(`(\\d+)\\s*${DICE_SEP}\\s*(\\d+)`, "gi");
   let m;
   while ((m = re.exec(text))) {
     const count = Math.max(1, Math.min(40, Number(m[1]) || 1));
@@ -24,7 +27,7 @@ export function parseDiceFormula(raw) {
   if (!dice.length) {
     throw new Error(`Не разобрать урон: ${source}`);
   }
-  const withoutDice = text.replace(/\d+\s*[dд]\s*\d+/gi, " ");
+  const withoutDice = text.replace(new RegExp(`\\d+\\s*${DICE_SEP}\\s*\\d+`, "gi"), " ");
   let bonus = 0;
   for (const bm of withoutDice.matchAll(/([+-])\s*(\d+)/g)) {
     const n = Number(bm[2]) || 0;
