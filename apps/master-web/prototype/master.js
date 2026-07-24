@@ -3783,10 +3783,10 @@ function renderMapTabs() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `map-tab${m.isActive ? " active" : ""}${m.published ? " published" : ""}${
-      m.playerSwitchLocked ? " switch-locked" : ""
+      m.spectatorLocked || m.playerSwitchLocked ? " switch-locked" : ""
     }`;
     btn.textContent = m.name;
-    const lockHint = m.playerSwitchLocked ? " · вкладка заблокирована" : "";
+    const lockHint = m.spectatorLocked || m.playerSwitchLocked ? " · ТВ заблокирован" : "";
     btn.title = `${m.name} · ${m.width}×${m.height} · токенов ${m.tokenCount}${
       m.published ? " · открыта игрокам" : ""
     }${lockHint}`;
@@ -3795,18 +3795,20 @@ function renderMapTabs() {
   }
   const active = state.maps.find((m) => m.isActive);
   if (ui.mapTabsStatus) {
+    const tvLocked = Boolean(active?.spectatorLocked || active?.playerSwitchLocked);
     ui.mapTabsStatus.textContent = active
-      ? `Активна: ${active.name}${active.published ? " (видят игроки · ТВ)" : " (только мастер)"}${
-          active.playerSwitchLocked ? " · вкладка игрокам закрыта" : ""
+      ? `Активна: ${active.name}${active.published ? " (видят игроки)" : " (только мастер)"}${
+          tvLocked ? " · ТВ не следует" : active.published ? " · ТВ следует" : ""
         }${state.playerMapId === active.id ? " · карта стола" : ""}`
       : "";
   }
   const canLock = Boolean(active?.published);
+  const tvLocked = Boolean(active?.spectatorLocked || active?.playerSwitchLocked);
   if (ui.lockMapSwitchBtn) {
-    ui.lockMapSwitchBtn.disabled = !canLock || Boolean(active?.playerSwitchLocked);
+    ui.lockMapSwitchBtn.disabled = !canLock || tvLocked;
   }
   if (ui.unlockMapSwitchBtn) {
-    ui.unlockMapSwitchBtn.disabled = !canLock || !active?.playerSwitchLocked;
+    ui.unlockMapSwitchBtn.disabled = !canLock || !tvLocked;
   }
 }
 

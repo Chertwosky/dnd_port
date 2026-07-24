@@ -2354,7 +2354,8 @@ async function requestHandler(req, res) {
         sendJson(res, 200, {
           ok: true,
           mapId: map.id,
-          playerSwitchLocked: Boolean(map.playerSwitchLocked),
+          playerSwitchLocked: Boolean(map.spectatorLocked || map.playerSwitchLocked),
+          spectatorLocked: Boolean(map.spectatorLocked || map.playerSwitchLocked),
           maps: mapsPublicMeta(game, { forMaster: true })
         });
       } catch (e) {
@@ -2374,10 +2375,6 @@ async function requestHandler(req, res) {
       const map = game.maps.find((m) => m.id === mapId && m.published);
       if (!map) {
         sendJson(res, 404, { error: "Карта недоступна игрокам" });
-        return;
-      }
-      if (session.role !== "master" && map.playerSwitchLocked) {
-        sendJson(res, 403, { error: "Мастер временно закрыл переключение на эту карту" });
         return;
       }
       if (session.role === "master") {

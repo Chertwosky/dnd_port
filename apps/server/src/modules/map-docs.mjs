@@ -13,6 +13,7 @@ export function createEmptyMapDoc(name = "Карта", { width = 40, height = 30
     overlays: {},
     vision: { mode: "full", radius: 3, revealedCells: [] },
     published: false,
+    spectatorLocked: false,
     playerSwitchLocked: false,
     createdAt: new Date().toISOString()
   };
@@ -98,13 +99,17 @@ export function getPlayerViewMap(game, preferredMapId = null) {
   return game.maps.find((m) => m.published) || game.maps[0];
 }
 
-/** ТВ-зритель: активная карта мастера, если открыта игрокам; иначе дефолт игроков. */
+/** ТВ-зритель: следует за мастером, но не заходит на карты с блокировкой ТВ. */
 export function getSpectatorViewMap(game) {
   ensureMapSystem(game);
-  const active = game.maps.find((m) => m.id === game.activeMapId && m.published);
+  const active = game.maps.find((m) => m.id === game.activeMapId && m.published && !isSpectatorLockedMap(m));
   if (active) return active;
-  const playerDefault = game.maps.find((m) => m.id === game.playerMapId && m.published);
+  const playerDefault = game.maps.find(
+    (m) => m.id === game.playerMapId && m.published && !isSpectatorLockedMap(m)
+  );
   if (playerDefault) return playerDefault;
+  const anyOpen = game.maps.find((m) => m.published && !isSpectatorLockedMap(m));
+  if (anyOpen) return anyOpen;
   return getPlayerViewMap(game, null);
 }
 
@@ -114,7 +119,8 @@ export function mapsPublicMeta(game, { forMaster = false } = {}) {
     id: m.id,
     name: m.name,
     published: Boolean(m.published),
-    playerSwitchLocked: Boolean(m.playerSwitchLocked),
+    spectatorLocked: Boolean(m.spectatorLocked || m.playerSwitchLocked),
+    playerSwitchLocked: Boolean(m.spectatorLocked || m.playerSwitchLocked),
     width: m.width,
     height: m.height,
     tokenCount: (m.tokens || []).length,
@@ -123,11 +129,16 @@ export function mapsPublicMeta(game, { forMaster = false } = {}) {
   })).filter((m) => forMaster || m.published);
 }
 
+function isSpectatorLockedMap(map) {
+  return Boolean(map?.spectatorLocked || map?.playerSwitchLocked);
+}
+
 export function setMapPlayerSwitchLock(game, mapId, locked = true) {
   ensureMapSystem(game);
   const map = getMapById(game, mapId);
   if (!map) throw new Error("Карта не найдена");
-  map.playerSwitchLocked = Boolean(locked);
+  map.spectatorLocked = Boolean(locked);
+  map.playerSwitchLocked = Boolean(locked); // совместимость со старыми сейвами
   return map;
 }
 
@@ -149,7 +160,10 @@ export function publishMap(game, mapId, published = true) {
   const map = getMapById(game, mapId);
   if (!map) throw new Error("Карта не найдена");
   map.published = Boolean(published);
-  if (!map.published) map.playerSwitchLocked = false;
+  if (!map.published) {
+    map.playerSwitchLocked = false;
+    map.spectatorLocked = false;
+  }
   if (map.published && !game.maps.some((m) => m.id === game.playerMapId && m.published)) {
     game.playerMapId = map.id;
   }

@@ -2209,16 +2209,10 @@ function renderPlayerMapTabs() {
   for (const m of maps) {
     const btn = document.createElement("button");
     btn.type = "button";
-    const locked = Boolean(m.playerSwitchLocked);
-    btn.className = `map-tab${m.id === currentId ? " active" : ""}${locked ? " switch-locked" : ""}`;
-    btn.textContent = locked ? `🔒 ${m.name}` : m.name;
-    if (locked && m.id !== currentId) {
-      btn.disabled = true;
-      btn.title = "Мастер временно закрыл переключение на эту карту";
-    } else {
-      btn.title = m.name;
-      btn.addEventListener("click", () => switchPlayerMap(m.id).catch(console.error));
-    }
+    btn.className = `map-tab${m.id === currentId ? " active" : ""}`;
+    btn.textContent = m.name;
+    btn.title = m.name;
+    btn.addEventListener("click", () => switchPlayerMap(m.id).catch(console.error));
     ui.playerMapTabs.appendChild(btn);
   }
 }
