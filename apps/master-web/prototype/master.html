@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps33" />
+    <link rel="stylesheet" href="/app.css?v=maps34" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -246,9 +246,13 @@
             </div>
 
             <div class="card stack">
-              <div class="subtitle">Выдать выбранный предмет</div>
+              <div class="subtitle">Выдать игроку</div>
               <select id="lootRecipient"></select>
-              <span class="muted">Сначала выберите предмет кнопкой «Выдать» в списке</span>
+              <div class="row loot-gold-row">
+                <input id="lootGoldAmount" type="number" min="1" step="1" value="50" placeholder="зм" title="Золотые монеты" />
+                <button type="button" id="lootGoldBtn" class="primary">Выдать золото</button>
+              </div>
+              <span class="muted">Предмет — «Выдать» в карточке; золото — сумма и кнопка выше</span>
             </div>
 
             <div class="card stack">
@@ -351,6 +355,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps33"></script>
+    <script type="module" src="/master.js?v=maps34"></script>
   </body>
 </html>

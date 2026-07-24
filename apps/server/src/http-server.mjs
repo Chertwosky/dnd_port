@@ -215,6 +215,16 @@ function lootPublicView(loot) {
   };
 }
 
+function ensureCharacterCoins(character) {
+  if (!character.coins || typeof character.coins !== "object") {
+    character.coins = { gp: 0, sp: 0, cp: 0, pp: 0, ep: 0 };
+  }
+  for (const key of ["gp", "sp", "cp", "pp", "ep"]) {
+    character.coins[key] = Number(character.coins[key]) || 0;
+  }
+  return character.coins;
+}
+
 function filterOverlaysForViewer(overlays, isMaster) {
   const source = overlays ?? {};
   if (isMaster) {
@@ -1382,6 +1392,7 @@ async function requestHandler(req, res) {
       "/loot/custom",
       "/loot/campaign",
       "/loot/grant",
+      "/loot/gold",
       "/loot/mine",
       "/loot/preload",
       "/spells/preload",
@@ -3199,6 +3210,67 @@ async function requestHandler(req, res) {
       };
       loot.grants.push(grant);
       sendJson(res, 200, { grant, loot: lootPublicView(loot) });
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/loot/gold") {
+      const session = getSession(req);
+      if (session?.role !== "master") {
+        sendJson(res, 403, { error: "Только мастер" });
+        return;
+      }
+      const body = await readJson(req);
+      const amount = Math.trunc(Number(body.amount ?? body.gp ?? 0));
+      if (!Number.isFinite(amount) || amount === 0) {
+        sendJson(res, 400, { error: "Укажите ненулевое количество зм" });
+        return;
+      }
+
+      let character = null;
+      if (body.characterId) {
+        character = game.characters.find((c) => c.id === body.characterId) || null;
+      } else if (body.memberId) {
+        const member = lobby.members.find((m) => m.id === body.memberId && m.role !== "master");
+        if (!member?.characterId) {
+          sendJson(res, 404, { error: "У игрока нет привязанного персонажа" });
+          return;
+        }
+        character = game.characters.find((c) => c.id === member.characterId) || null;
+      } else {
+        sendJson(res, 400, { error: "Укажите characterId или memberId" });
+        return;
+      }
+      if (!character) {
+        sendJson(res, 404, { error: "Персонаж не найден" });
+        return;
+      }
+
+      const coins = ensureCharacterCoins(character);
+      coins.gp = Math.max(0, coins.gp + amount);
+      const loot = ensureLootState(game);
+      const grant = {
+        id: randomId("grant"),
+        kind: "gold",
+        item: {
+          id: `gold-${Date.now().toString(36)}`,
+          name: `${amount > 0 ? "+" : ""}${amount} зм`,
+          rarity: "common",
+          rarityLabel: "Золото"
+        },
+        amountGp: amount,
+        coinsAfter: { ...coins },
+        characterId: character.id,
+        memberId: null,
+        recipientLabel: character.name,
+        from: "gold",
+        createdAt: new Date().toISOString()
+      };
+      loot.grants.push(grant);
+      sendJson(res, 200, {
+        grant,
+        character: { id: character.id, name: character.name, coins: { ...coins } },
+        loot: lootPublicView(loot)
+      });
       return;
     }
 

@@ -3220,6 +3220,16 @@ body.map-inspect-open {
   word-break: break-word;
 }
 
+.loot-gold-row {
+  align-items: center;
+  gap: 8px;
+}
+
+.loot-gold-row input[type="number"] {
+  width: 96px;
+  flex: 0 0 auto;
+}
+
 .loot-last-drop {
   margin-top: 8px;
   padding: 10px;

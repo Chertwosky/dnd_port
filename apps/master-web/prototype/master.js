@@ -125,6 +125,8 @@ const ui = {
   lootAddDropBtn: document.getElementById("lootAddDropBtn"),
   lootAddCampaignBtn: document.getElementById("lootAddCampaignBtn"),
   lootRecipient: document.getElementById("lootRecipient"),
+  lootGoldAmount: document.getElementById("lootGoldAmount"),
+  lootGoldBtn: document.getElementById("lootGoldBtn"),
   lootDropsList: document.getElementById("lootDropsList"),
   lootCampaignList: document.getElementById("lootCampaignList"),
   lootGrantsList: document.getElementById("lootGrantsList"),
@@ -4307,7 +4309,12 @@ function renderLootGrants() {
   for (const g of grants) {
     const row = document.createElement("div");
     row.className = "card";
-    row.textContent = `${g.item?.name ?? "предмет"} → ${g.recipientLabel}`;
+    if (g.kind === "gold" || g.from === "gold") {
+      const after = g.coinsAfter?.gp != null ? ` (итог ${g.coinsAfter.gp} зм)` : "";
+      row.textContent = `${g.item?.name ?? "золото"} → ${g.recipientLabel}${after}`;
+    } else {
+      row.textContent = `${g.item?.name ?? "предмет"} → ${g.recipientLabel}`;
+    }
     ui.lootGrantsList.appendChild(row);
   }
 }
@@ -4417,6 +4424,41 @@ async function grantLootItem(itemId, from) {
       renderLastDrop(null);
     }
     ui.lootCatalogStatus.textContent = `Выдано: ${data.grant?.item?.name} → ${data.grant?.recipientLabel}`;
+  } catch (error) {
+    ui.lootCatalogStatus.textContent = `ошибка: ${String(error.message || error)}`;
+  }
+}
+
+async function grantLootGold() {
+  const raw = ui.lootRecipient?.value || "";
+  if (!raw) {
+    ui.lootCatalogStatus.textContent = "Нет получателя";
+    return;
+  }
+  const amount = Math.trunc(Number(ui.lootGoldAmount?.value || 0));
+  if (!Number.isFinite(amount) || amount === 0) {
+    ui.lootCatalogStatus.textContent = "Укажите сумму зм";
+    return;
+  }
+  const body = { amount };
+  if (raw.startsWith("c:")) body.characterId = raw.slice(2);
+  else if (raw.startsWith("m:")) body.memberId = raw.slice(2);
+  else {
+    ui.lootCatalogStatus.textContent = "Выберите получателя";
+    return;
+  }
+  try {
+    const data = await call("/loot/gold", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    state.loot = { ...state.loot, ...data.loot };
+    if (data.character?.id && Array.isArray(state.characters)) {
+      const ch = state.characters.find((c) => c.id === data.character.id);
+      if (ch) ch.coins = data.character.coins;
+    }
+    renderLootPanel();
+    ui.lootCatalogStatus.textContent = `${data.grant?.item?.name} → ${data.grant?.recipientLabel}`;
   } catch (error) {
     ui.lootCatalogStatus.textContent = `ошибка: ${String(error.message || error)}`;
   }
@@ -4549,6 +4591,11 @@ document.getElementById("masterMapDice")?.addEventListener("click", (e) => {
 });
 ui.lootRandomBtn?.addEventListener("click", rollRandomLoot);
 ui.lootPreloadBtn?.addEventListener("click", preloadLootCatalog);
+ui.lootGoldBtn?.addEventListener("click", () => {
+  grantLootGold().catch((err) => {
+    if (ui.lootCatalogStatus) ui.lootCatalogStatus.textContent = `ошибка: ${String(err.message || err)}`;
+  });
+});
 ui.lootAddDropBtn?.addEventListener("click", () => addCustomLoot("drops"));
 ui.lootAddCampaignBtn?.addEventListener("click", () => addCustomLoot("campaign"));
 ui.lootModalClose?.addEventListener("click", closeLootCard);

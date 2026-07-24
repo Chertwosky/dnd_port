@@ -4,11 +4,42 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_PATH = path.join(__dirname, "magic-items-network-cache.json");
+/** На Vercel/Lambda `/var/task` read-only — пишем в /tmp, чтение пробуем оба пути. */
+const TMP_CACHE_PATH = path.join("/tmp", "magic-items-network-cache.json");
 /** Политика контента: магические предметы из Open5e. */
 export const CONTENT_SOURCE = "open5e-srd-2024";
 const OPEN5E_V2 = "https://api.open5e.com/v2";
 const DOCUMENT = "srd-2024";
 const CACHE_VERSION = 2;
+
+function cacheReadPaths() {
+  return [TMP_CACHE_PATH, CACHE_PATH];
+}
+
+async function writeCachePayload(payload) {
+  const targets = [TMP_CACHE_PATH, CACHE_PATH];
+  let lastError = null;
+  for (const target of targets) {
+    try {
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, JSON.stringify(payload), "utf8");
+      return true;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  // Serverless: память достаточно для тёплого инстанса; не роняем лут из‑за EROFS.
+  if (lastError) {
+    console.warn("[magic-items] cache write skipped:", String(lastError.message || lastError));
+  }
+  return false;
+}
+
+function isUsableDiskCache(cached) {
+  if (!Array.isArray(cached?.items) || cached.items.length < 20) return false;
+  // Принимаем текущую версию и старый бандл без version (чтобы cold start не ходил в Open5e зря).
+  return cached.version === CACHE_VERSION || cached.version == null;
+}
 
 /** 5 уровней редкости как на dnd.su */
 export const RARITIES = [
@@ -637,19 +668,22 @@ export async function loadMagicItemsFromNetwork({ forceRefresh = false, onProgre
         fromCache: true
       };
     }
-    try {
-      const cached = JSON.parse(await readFile(CACHE_PATH, "utf8"));
-      if (Array.isArray(cached.items) && cached.items.length > 20 && cached.version === CACHE_VERSION) {
-        memoryCache = cached;
-        report(100, `Из кэша: ${cached.items.length}`);
-        return {
-          ...cached,
-          items: cached.items.map(localizeItem),
-          fromCache: true
-        };
+    for (const cachePath of cacheReadPaths()) {
+      try {
+        const cached = JSON.parse(await readFile(cachePath, "utf8"));
+        if (isUsableDiskCache(cached)) {
+          if (cached.version == null) cached.version = CACHE_VERSION;
+          memoryCache = cached;
+          report(100, `Из кэша: ${cached.items.length}`);
+          return {
+            ...cached,
+            items: cached.items.map(localizeItem),
+            fromCache: true
+          };
+        }
+      } catch {
+        /* try next path */
       }
-    } catch {
-      /* no cache */
     }
   }
 
@@ -673,8 +707,7 @@ export async function loadMagicItemsFromNetwork({ forceRefresh = false, onProgre
     byRarityCounts: Object.fromEntries(RARITIES.map((r) => [r.id, byRarity[r.id].length]))
   };
 
-  await mkdir(path.dirname(CACHE_PATH), { recursive: true });
-  await writeFile(CACHE_PATH, JSON.stringify(payload), "utf8");
+  await writeCachePayload(payload);
   memoryCache = payload;
   report(100, `Готово: ${items.length} предметов`);
   return { ...payload, fromCache: false };
