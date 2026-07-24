@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps27" />
+    <link rel="stylesheet" href="/app.css?v=maps28" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -125,7 +125,19 @@
 
           <div class="card stack">
             <div class="subtitle">Герои за столом</div>
-            <div class="muted">Героев добавляют игроки (импорт листа). Мастер: ХП, уровень, лут, карта.</div>
+            <div class="muted">Залейте листы заранее — игроки выберут из списка. Или пусть импортируют сами.</div>
+            <div class="stack hero-import-block" style="gap:8px">
+              <label class="file-pick">
+                <input type="file" id="masterHeroFileInput" accept=".json,application/json,text/json" multiple />
+                <span class="file-pick-btn">📁 Залить JSON героев</span>
+              </label>
+              <div id="masterHeroImportStatus" class="muted">Можно несколько файлов сразу</div>
+              <details class="import-paste">
+                <summary class="muted">Или вставить JSON текстом</summary>
+                <textarea id="masterHeroRawJson" placeholder="Вставьте JSON листа персонажа"></textarea>
+                <button type="button" id="masterHeroImportPasteBtn" class="primary">Добавить в пул</button>
+              </details>
+            </div>
             <div id="heroesList" class="list"></div>
           </div>
 
@@ -324,6 +336,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps27"></script>
+    <script type="module" src="/master.js?v=maps28"></script>
   </body>
 </html>

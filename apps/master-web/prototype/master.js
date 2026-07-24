@@ -84,6 +84,10 @@ const ui = {
   showToPlayersToggle: document.getElementById("showToPlayersToggle"),
   secretsList: document.getElementById("secretsList"),
   heroesList: document.getElementById("heroesList"),
+  masterHeroFileInput: document.getElementById("masterHeroFileInput"),
+  masterHeroImportStatus: document.getElementById("masterHeroImportStatus"),
+  masterHeroRawJson: document.getElementById("masterHeroRawJson"),
+  masterHeroImportPasteBtn: document.getElementById("masterHeroImportPasteBtn"),
   heroModal: document.getElementById("heroModal"),
   heroModalBody: document.getElementById("heroModalBody"),
   heroModalClose: document.getElementById("heroModalClose"),
@@ -2840,10 +2844,11 @@ function renderHeroesList() {
   ui.heroesList.innerHTML = "";
   const heroes = state.characters || [];
   if (!heroes.length) {
-    ui.heroesList.innerHTML = `<div class="muted">Пока нет героев — игрок импортирует лист</div>`;
+    ui.heroesList.innerHTML = `<div class="muted">Пул пуст — залейте JSON выше или дождитесь импорта игрока</div>`;
     return;
   }
   for (const h of heroes) {
+    const bound = (state.members || []).find((m) => m.characterId === h.id && m.role === "player");
     const card = document.createElement("div");
     card.className = "card hero-list-card";
     const thumb = h.portraitUrl
@@ -2852,10 +2857,18 @@ function renderHeroesList() {
     card.innerHTML = `
       ${thumb}
       <div class="stack" style="flex:1;min-width:0">
-        <div class="row">
-          <strong>${escapeHtml(h.name)}</strong>
-          ${h.isTest ? '<span class="pill">тест</span>' : ""}
-          ${h.canLevelUp ? '<span class="pill" style="border-color:#41c488;color:#9af0c3">можно ур.↑</span>' : ""}
+        <div class="row" style="justify-content:space-between;gap:6px;align-items:flex-start">
+          <div class="row" style="gap:6px;flex-wrap:wrap">
+            <strong>${escapeHtml(h.name)}</strong>
+            ${bound ? `<span class="pill" style="border-color:#41c488;color:#9af0c3">у ${escapeHtml(bound.name)}</span>` : `<span class="pill">свободен</span>`}
+            ${h.isTest ? '<span class="pill">тест</span>' : ""}
+            ${h.canLevelUp ? '<span class="pill" style="border-color:#41c488;color:#9af0c3">можно ур.↑</span>' : ""}
+          </div>
+          ${
+            !bound
+              ? `<button type="button" class="warn hero-remove-btn" data-remove-hero="${escapeAttr(h.id)}" title="Убрать из пула">✕</button>`
+              : ""
+          }
         </div>
         <div class="muted">${escapeHtml(h.race || "")} · ${escapeHtml(h.classesLabel || `${h.className || ""} ${h.level ?? ""}`)} · XP ${h.experience ?? 0}</div>
         <div class="muted">ХП ${h.vitals?.hpCurrent ?? "—"}/${h.vitals?.hpMax ?? "—"} · КД ${h.vitals?.ac ?? "—"}</div>
@@ -2863,7 +2876,8 @@ function renderHeroesList() {
     `;
     card.style.cursor = "pointer";
     card.title = "Открыть карточку героя";
-    card.addEventListener("click", () => {
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("[data-remove-hero]")) return;
       setRollTargetFromCombatant({
         name: h.name,
         type: "player",
@@ -2873,7 +2887,93 @@ function renderHeroesList() {
       });
       openHeroCard(h.id);
     });
+    card.querySelector("[data-remove-hero]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      removeHeroFromPool(h.id).catch(console.error);
+    });
     ui.heroesList.appendChild(card);
+  }
+}
+
+async function readFileAsText(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+    reader.readAsText(file, "UTF-8");
+  });
+}
+
+async function importHeroRaw(raw, label = "лист") {
+  const text = String(raw || "").trim();
+  if (!text) throw new Error("Пустой JSON");
+  try {
+    JSON.parse(text);
+  } catch {
+    throw new Error(`${label}: неверный JSON`);
+  }
+  return call("/characters/import", {
+    method: "POST",
+    body: JSON.stringify({ rawFileContent: text, placeOnMap: false })
+  });
+}
+
+async function importMasterHeroFiles(files) {
+  const list = [...(files || [])];
+  if (!list.length) return;
+  if (ui.masterHeroImportStatus) {
+    ui.masterHeroImportStatus.textContent = `Импорт ${list.length}…`;
+  }
+  const ok = [];
+  const fail = [];
+  for (const file of list) {
+    try {
+      const raw = await readFileAsText(file);
+      const character = await importHeroRaw(raw, file.name);
+      ok.push(character.name || file.name);
+    } catch (error) {
+      fail.push(`${file.name}: ${error.message || error}`);
+    }
+  }
+  await syncVision().catch(() => {});
+  if (ui.masterHeroImportStatus) {
+    const parts = [];
+    if (ok.length) parts.push(`Добавлено: ${ok.join(", ")}`);
+    if (fail.length) parts.push(`Ошибки: ${fail.join("; ")}`);
+    ui.masterHeroImportStatus.textContent = parts.join(" · ") || "Готово";
+  }
+  if (ui.masterHeroFileInput) ui.masterHeroFileInput.value = "";
+}
+
+async function importMasterHeroPaste() {
+  const raw = ui.masterHeroRawJson?.value || "";
+  if (ui.masterHeroImportStatus) ui.masterHeroImportStatus.textContent = "Импорт…";
+  try {
+    const character = await importHeroRaw(raw, "вставка");
+    if (ui.masterHeroRawJson) ui.masterHeroRawJson.value = "";
+    await syncVision().catch(() => {});
+    if (ui.masterHeroImportStatus) {
+      ui.masterHeroImportStatus.textContent = `Добавлен: ${character.name} · игроки увидят в списке`;
+    }
+  } catch (error) {
+    if (ui.masterHeroImportStatus) {
+      ui.masterHeroImportStatus.textContent = String(error.message || error);
+    }
+  }
+}
+
+async function removeHeroFromPool(characterId) {
+  if (!characterId) return;
+  const hero = (state.characters || []).find((c) => c.id === characterId);
+  if (!window.confirm(`Убрать «${hero?.name || "героя"}» из пула выбора?`)) return;
+  try {
+    await call(`/characters/${characterId}`, { method: "DELETE" });
+    await syncVision();
+    if (ui.masterHeroImportStatus) {
+      ui.masterHeroImportStatus.textContent = `Убран: ${hero?.name || characterId}`;
+    }
+  } catch (error) {
+    window.alert(String(error.message || error));
   }
 }
 
@@ -4283,6 +4383,18 @@ ui.monsterSearch?.addEventListener("input", renderMonsters);
 ui.monsterModalClose?.addEventListener("click", closeMonsterCard);
 ui.createNpcBtn.addEventListener("click", createNpc);
 ui.closeLobbyBtn.addEventListener("click", closeLobby);
+ui.masterHeroFileInput?.addEventListener("change", () => {
+  const files = ui.masterHeroFileInput?.files;
+  if (!files?.length) return;
+  importMasterHeroFiles(files).catch((error) => {
+    if (ui.masterHeroImportStatus) {
+      ui.masterHeroImportStatus.textContent = String(error.message || error);
+    }
+  });
+});
+ui.masterHeroImportPasteBtn?.addEventListener("click", () => {
+  importMasterHeroPaste().catch(console.error);
+});
 ui.rightTabCombat?.addEventListener("click", () => setRightTab("combat"));
 ui.rightTabLoot?.addEventListener("click", () => {
   setRightTab("loot");

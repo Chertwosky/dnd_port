@@ -1334,18 +1334,64 @@ async function requestHandler(req, res) {
     ensureMapSystem(game);
 
     if (req.method === "POST" && parsedUrl.pathname === "/characters/import") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
       const body = await readJson(req);
       if (typeof body.rawFileContent !== "string") {
         sendJson(res, 400, { error: "Нужно поле rawFileContent" });
         return;
       }
-      const character = mapCharacterFromLongStoryShort(body.rawFileContent);
+      let character;
+      try {
+        character = mapCharacterFromLongStoryShort(body.rawFileContent);
+      } catch (error) {
+        sendJson(res, 400, { error: String(error.message || error) });
+        return;
+      }
+      character.importedBy = session.role;
+      character.importedByName = session.userName || null;
       game.characters.push(character);
-      // Героя на карту ставит игрок/мастер отдельно; при импорте игроком можно сразу
-      if (body.placeOnMap !== false) {
+      // Мастер обычно заливает пул на выбор — токен ставим при привязке игрока
+      const placeDefault = session.role === "player";
+      const placeOnMap = body.placeOnMap != null ? Boolean(body.placeOnMap) : placeDefault;
+      if (placeOnMap) {
         syncHeroToken(game, character, body.position || { x: 3, y: 3 });
       }
       sendJson(res, 201, character);
+      return;
+    }
+
+    if (req.method === "DELETE" && /^\/characters\/[^/]+$/.test(parsedUrl.pathname)) {
+      const session = getSession(req);
+      if (session?.role !== "master") {
+        sendJson(res, 403, { error: "Только мастер" });
+        return;
+      }
+      const characterId = parsedUrl.pathname.split("/")[2];
+      const idx = game.characters.findIndex((c) => c.id === characterId);
+      if (idx < 0) {
+        sendJson(res, 404, { error: "Персонаж не найден" });
+        return;
+      }
+      const bound = lobby.members.find((m) => m.characterId === characterId);
+      if (bound) {
+        sendJson(res, 400, {
+          error: `Персонаж привязан к «${bound.name}». Сначала смените персонажа у игрока или отвяжите.`
+        });
+        return;
+      }
+      const [removed] = game.characters.splice(idx, 1);
+      for (const map of game.maps || []) {
+        if (!Array.isArray(map.tokens)) continue;
+        map.tokens = map.tokens.filter((t) => t.characterId !== characterId);
+      }
+      if (game.map?.tokens) {
+        game.map.tokens = game.map.tokens.filter((t) => t.characterId !== characterId);
+      }
+      sendJson(res, 200, { removed: { id: removed.id, name: removed.name } });
       return;
     }
 
@@ -1392,6 +1438,15 @@ async function requestHandler(req, res) {
       const member = lobby.members.find((m) => m.id === session.userId);
       if (!member) {
         sendJson(res, 404, { error: "Участник лобби не найден" });
+        return;
+      }
+      const takenBy = lobby.members.find(
+        (m) => m.characterId === character.id && m.id !== session.userId
+      );
+      if (takenBy) {
+        sendJson(res, 409, {
+          error: `Персонаж «${character.name}» уже выбран игроком «${takenBy.name}»`
+        });
         return;
       }
       member.role = "player";

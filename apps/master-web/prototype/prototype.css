@@ -784,6 +784,18 @@ button.warn {
   outline: 1px solid var(--accent);
 }
 
+.hero-list-card .hero-remove-btn {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  min-height: 28px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.hero-import-block .file-pick-btn {
+  min-height: 42px;
+}
+
 .hero-thumb {
   width: 44px;
   height: 44px;

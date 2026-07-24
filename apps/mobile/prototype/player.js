@@ -427,15 +427,20 @@ function renderMembers() {
 
 function renderCharacters() {
   ui.characterSelect.innerHTML = "";
+  const members = state.mapVision?.members || state.lobby?.members || [];
   for (const c of state.characters) {
     const opt = document.createElement("option");
     opt.value = c.id;
-    opt.textContent = `${c.name} (${c.className} ${c.level})`;
+    const taken = members.find((m) => m.characterId === c.id && m.role === "player");
+    const mine = taken && state.character?.id === c.id;
+    const tag = taken && !mine ? ` — занят (${taken.name})` : taken && mine ? " — ваш" : " — свободен";
+    opt.textContent = `${c.name} (${c.className} ${c.level})${tag}`;
+    if (taken && !mine) opt.disabled = true;
     ui.characterSelect.appendChild(opt);
   }
   if (state.characters.length === 0) {
     const opt = document.createElement("option");
-    opt.textContent = "Персонажей пока нет";
+    opt.textContent = "Пул пуст — дождитесь заливки мастера или импортируйте JSON";
     ui.characterSelect.appendChild(opt);
   }
 }
@@ -1937,6 +1942,15 @@ async function refreshMap() {
   state.mapVision = await call("/map/vision");
   if (state.mapVision?.privateChat) {
     applyPlayerPrivateChat({ privateChat: state.mapVision.privateChat });
+  }
+  // Пул героев от мастера — обновляем список выбора
+  if (Array.isArray(state.mapVision?.characters)) {
+    state.characters = state.mapVision.characters.map((c) => ({
+      ...c,
+      className: c.className || c.classesLabel || "",
+      level: c.level
+    }));
+    renderCharacters();
   }
   renderPlayerMapTabs();
   renderMap();
