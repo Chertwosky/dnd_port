@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps25" />
+    <link rel="stylesheet" href="/app.css?v=maps26" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -73,6 +73,7 @@
           <button id="applyVisionBtn" class="primary">Применить видимость</button>
           <button id="revealSampleBtn">Открыть зону (пример)</button>
           <button id="openCombatBtn" class="warn">⚔ Бой</button>
+          <button type="button" id="forceEndCombatBtn" class="warn hidden" title="Сбросить инициативу и выйти из боя">⏹ Прервать бой</button>
           <span class="map-zoom-controls row">
             <button type="button" id="mapZoomOutBtn" title="Уменьшить карту">−</button>
             <button type="button" id="mapZoomFitBtn" title="Вписать в окно">⊡</button>
@@ -178,7 +179,7 @@
             </div>
             <div class="row combat-controls">
               <button type="button" id="nextTurnBtn">След. ход</button>
-              <button type="button" id="endCombatBtn" class="warn">Конец боя</button>
+              <button type="button" id="endCombatBtn" class="warn">⏹ Прервать / конец боя</button>
             </div>
             <div id="combatStatus" class="muted">Бой не начат</div>
             <div id="rollToast" class="roll-toast hidden" aria-live="polite"></div>
@@ -304,6 +305,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps25"></script>
+    <script type="module" src="/master.js?v=maps26"></script>
   </body>
 </html>

@@ -2449,8 +2449,30 @@ async function requestHandler(req, res) {
         sendJson(res, 403, { error: "Только мастер" });
         return;
       }
+      const body = await readJson(req).catch(() => ({}));
+      const wasActive = Boolean(game.combat?.active);
       const combat = endCombat(game);
-      sendJson(res, 200, { combat: combatPublicView(combat, { viewerRole: "master", game }) });
+      if (wasActive) {
+        appendCombatLog(game, {
+          id: randomId("combat"),
+          type: "roll",
+          actorName: session.userName || "Мастер",
+          actorRole: "master",
+          rollerName: session.userName || "Мастер",
+          kind: "ability",
+          label: "Бой прерван",
+          die: 0,
+          roll: 0,
+          bonus: 0,
+          total: 0,
+          detail: body?.reason === "force" ? "Принудительная остановка боя · инициатива сброшена" : "Бой завершён · инициатива сброшена",
+          createdAt: new Date().toISOString()
+        });
+      }
+      sendJson(res, 200, {
+        combat: combatPublicView(combat, { viewerRole: "master", game }),
+        combatLog: publicCombatLog(game)
+      });
       return;
     }
 

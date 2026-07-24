@@ -123,6 +123,7 @@ const ui = {
   autoInitBtn: document.getElementById("autoInitBtn"),
   nextTurnBtn: document.getElementById("nextTurnBtn"),
   endCombatBtn: document.getElementById("endCombatBtn"),
+  forceEndCombatBtn: document.getElementById("forceEndCombatBtn"),
   combatStatus: document.getElementById("combatStatus"),
   initiativeBar: document.getElementById("initiativeBar"),
   combatModal: document.getElementById("combatModal"),
@@ -1151,9 +1152,20 @@ async function nextTurn() {
 }
 
 async function endCombatEncounter() {
-  if (!confirm("Завершить бой и сбросить инициативу?")) return;
-  await call("/combat/end", { method: "POST", body: "{}" });
+  if (!state.combat?.active) {
+    if (ui.combatStatus) ui.combatStatus.textContent = "Бой сейчас не идёт";
+    return;
+  }
+  if (!confirm("Прервать бой и убрать полосу инициативы? Состояние карт/ХП сохранится.")) return;
+  await call("/combat/end", { method: "POST", body: JSON.stringify({ reason: "force" }) });
   await syncVision();
+  if (ui.combatStatus) ui.combatStatus.textContent = "Бой прерван — инициатива сброшена";
+}
+
+function syncForceEndCombatButton() {
+  const active = Boolean(state.combat?.active);
+  ui.forceEndCombatBtn?.classList.toggle("hidden", !active);
+  if (ui.endCombatBtn) ui.endCombatBtn.disabled = !active;
 }
 
 function skillBonus(character, skill) {
@@ -3052,6 +3064,7 @@ function renderCombatInitiativeBar() {
   renderInitiativeBar(ui.initiativeBar, state.combat, {
     onOpenSheet: openFromInitiative
   });
+  syncForceEndCombatButton();
   const current = state.combat?.current || state.combat?.order?.[state.combat?.currentIndex || 0] || null;
   if (current && (!state.rollTarget || state.rollTarget.tokenId === current.tokenId || !state.rollTarget.tokenId)) {
     setRollTargetFromCombatant(current);
@@ -4064,6 +4077,7 @@ ui.combatSelectNewBtn?.addEventListener("click", () => {
 ui.autoInitBtn?.addEventListener("click", () => autoRollNpcs().catch(console.error));
 ui.nextTurnBtn?.addEventListener("click", () => nextTurn().catch(console.error));
 ui.endCombatBtn?.addEventListener("click", () => endCombatEncounter().catch(console.error));
+ui.forceEndCombatBtn?.addEventListener("click", () => endCombatEncounter().catch(console.error));
 ui.lootRandomBtn?.addEventListener("click", rollRandomLoot);
 ui.lootPreloadBtn?.addEventListener("click", preloadLootCatalog);
 ui.lootAddDropBtn?.addEventListener("click", () => addCustomLoot("drops"));
