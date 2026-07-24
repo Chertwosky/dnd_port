@@ -112,6 +112,8 @@ const state = {
   mapVision: null,
   activeTab: "combat",
   inventory: [],
+  privateChat: { thread: null, dice: [4, 6, 8, 10, 12, 20] },
+  chatSeenId: "",
   mapFitCols: 0,
   mapFitRows: 0
 };
@@ -1002,6 +1004,11 @@ async function renderLevelTab() {
 }
 
 async function renderTab() {
+  if (state.activeTab === "chat") {
+    renderPlayerChat();
+    return;
+  }
+
   if (state.activeTab === "level") {
     renderLevelTab();
     return;
@@ -1036,6 +1043,173 @@ async function renderTab() {
   });
   wireParseNotesButton();
   wirePlayerSheetRolls(ui.tabBody);
+}
+
+function formatChatTime(iso) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function playerChatUnread() {
+  const msgs = state.privateChat?.thread?.messages || [];
+  if (!msgs.length) return 0;
+  if (!state.chatSeenId) return msgs.filter((m) => m.fromRole === "master").length;
+  const idx = msgs.findIndex((m) => m.id === state.chatSeenId);
+  if (idx < 0) return msgs.filter((m) => m.fromRole === "master").length;
+  return msgs.slice(idx + 1).filter((m) => m.fromRole === "master").length;
+}
+
+function markPlayerChatSeen() {
+  const msgs = state.privateChat?.thread?.messages || [];
+  if (!msgs.length) return;
+  state.chatSeenId = msgs[msgs.length - 1].id;
+  updatePlayerChatBadge();
+}
+
+function updatePlayerChatBadge() {
+  const badge = document.getElementById("playerChatBadge");
+  if (!badge) return;
+  const n = playerChatUnread();
+  badge.textContent = String(n);
+  badge.classList.toggle("hidden", n === 0 || state.activeTab === "chat");
+}
+
+function renderPlayerChatBubble(msg) {
+  const role = msg.fromRole === "master" ? "master" : "player";
+  const who = escapeHtml(msg.fromName || (role === "master" ? "Мастер" : "Вы"));
+  const time = escapeHtml(formatChatTime(msg.createdAt));
+  if (msg.type === "roll") {
+    return `<div class="chat-bubble from-${role}">
+      <div class="chat-bubble-who">${who} · скрытый бросок</div>
+      <div class="chat-roll">
+        <div class="chat-die-face">${escapeHtml(String(msg.roll))}</div>
+        <div class="chat-roll-label">d${escapeHtml(String(msg.die))}<br/><strong>${escapeHtml(String(msg.roll))}</strong></div>
+      </div>
+      <div class="chat-bubble-time">${time}</div>
+    </div>`;
+  }
+  return `<div class="chat-bubble from-${role}">
+    <div class="chat-bubble-who">${who}</div>
+    <div class="chat-bubble-text">${escapeHtml(msg.text || "")}</div>
+    <div class="chat-bubble-time">${time}</div>
+  </div>`;
+}
+
+function renderPlayerChat() {
+  if (!ui.tabBody) return;
+  const dice = state.privateChat?.dice || [4, 6, 8, 10, 12, 20];
+  const msgs = state.privateChat?.thread?.messages || [];
+  const body =
+    msgs.length > 0
+      ? msgs.map(renderPlayerChatBubble).join("")
+      : `<div class="chat-empty">Личный канал с мастером.<br/>Напишите шёпотом или киньте кубик — остальные за столом не увидят.</div>`;
+
+  ui.tabBody.innerHTML = `
+    <div class="whisper-panel">
+      <div class="whisper-panel-glow" aria-hidden="true"></div>
+      <div class="whisper-meta muted">Чат с мастером · только вы двое</div>
+      <div id="playerChatMessages" class="chat-messages">${body}</div>
+      <div class="chat-dice" id="playerChatDice">
+        ${dice.map((d) => `<button type="button" class="chat-die-btn" data-chat-die="${d}">d${d}</button>`).join("")}
+      </div>
+      <div class="chat-compose">
+        <textarea id="playerChatInput" rows="2" maxlength="800" placeholder="Написать мастеру…"></textarea>
+        <button type="button" id="playerChatSendBtn" class="primary">Отправить</button>
+      </div>
+    </div>
+  `;
+
+  const messagesEl = document.getElementById("playerChatMessages");
+  if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight;
+
+  document.getElementById("playerChatSendBtn")?.addEventListener("click", () => {
+    sendPlayerChatMessage().catch(console.error);
+  });
+  document.getElementById("playerChatInput")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendPlayerChatMessage().catch(console.error);
+    }
+  });
+  document.getElementById("playerChatDice")?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-chat-die]");
+    if (!btn) return;
+    sendPlayerChatRoll(Number(btn.dataset.chatDie)).catch(console.error);
+  });
+
+  markPlayerChatSeen();
+}
+
+function applyPlayerPrivateChat(data) {
+  if (!data?.privateChat) return;
+  const prevMsgs = state.privateChat?.thread?.messages || [];
+  const prevLast = prevMsgs.length ? prevMsgs[prevMsgs.length - 1].id : "";
+  if (!state._chatBootstrapped) {
+    state._chatBootstrapped = true;
+    const bootMsgs = data.privateChat?.thread?.messages || [];
+    if (bootMsgs.length) state.chatSeenId = bootMsgs[bootMsgs.length - 1].id;
+  }
+  state.privateChat = data.privateChat;
+  updatePlayerChatBadge();
+  if (state.activeTab !== "chat") return;
+
+  const nextMsgs = state.privateChat?.thread?.messages || [];
+  const nextLast = nextMsgs.length ? nextMsgs[nextMsgs.length - 1].id : "";
+  const messagesEl = document.getElementById("playerChatMessages");
+
+  if (messagesEl && prevLast === nextLast) {
+    markPlayerChatSeen();
+    return;
+  }
+
+  if (messagesEl) {
+    messagesEl.innerHTML =
+      nextMsgs.length > 0
+        ? nextMsgs.map(renderPlayerChatBubble).join("")
+        : `<div class="chat-empty">Личный канал с мастером.<br/>Напишите шёпотом или киньте кубик — остальные за столом не увидят.</div>`;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    markPlayerChatSeen();
+    return;
+  }
+
+  renderPlayerChat();
+}
+
+async function sendPlayerChatMessage() {
+  const input = document.getElementById("playerChatInput");
+  const text = input?.value?.trim() || "";
+  if (!text) return;
+  const btn = document.getElementById("playerChatSendBtn");
+  if (btn) btn.disabled = true;
+  try {
+    const data = await call("/chat/message", {
+      method: "POST",
+      body: JSON.stringify({ text })
+    });
+    if (input) input.value = "";
+    applyPlayerPrivateChat(data);
+  } catch (error) {
+    alert(String(error.message || error));
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function sendPlayerChatRoll(die) {
+  if (!die) return;
+  try {
+    const data = await call("/chat/roll", {
+      method: "POST",
+      body: JSON.stringify({ die })
+    });
+    applyPlayerPrivateChat(data);
+  } catch (error) {
+    alert(String(error.message || error));
+  }
 }
 
 function wireParseNotesButton() {
@@ -1761,6 +1935,9 @@ async function bindSelected() {
 async function refreshMap() {
   if (!state.lobby) return;
   state.mapVision = await call("/map/vision");
+  if (state.mapVision?.privateChat) {
+    applyPlayerPrivateChat({ privateChat: state.mapVision.privateChat });
+  }
   renderPlayerMapTabs();
   renderMap();
   renderPlayerInitiative();
@@ -1934,6 +2111,7 @@ function setupTabs() {
       renderTab();
       if (state.activeTab === "inventory") loadInventory();
       if (state.activeTab === "level") renderLevelTab();
+      if (state.activeTab === "chat") markPlayerChatSeen();
     });
   });
 }

@@ -54,6 +54,12 @@ import {
   schedulePersistLobby
 } from "./modules/lobby-persist.mjs";
 import {
+  appendChatRoll,
+  appendChatText,
+  privateChatViewForMaster,
+  privateChatViewForPlayer
+} from "./modules/private-chat.mjs";
+import {
   addMapDoc,
   createEmptyMapDoc,
   ensureMapSystem,
@@ -157,6 +163,7 @@ function createLobbyGameState() {
     customNpcs: [],
     combatLog: [],
     combat: createEmptyCombat(),
+    privateChats: {},
     loot: {
       campaignPool: [],
       sessionDrops: [],
@@ -1281,6 +1288,9 @@ async function requestHandler(req, res) {
       "/combat/initiative/auto",
       "/combat/turn/next",
       "/combat/end",
+      "/chat",
+      "/chat/message",
+      "/chat/roll",
       "/loot",
       "/loot/random",
       "/loot/custom",
@@ -1822,6 +1832,9 @@ async function requestHandler(req, res) {
         }),
         loot: isMaster ? lootPublicView(ensureLootState(game)) : undefined,
         combatLog: publicCombatLog(game),
+        privateChat: isMaster
+          ? privateChatViewForMaster(game, lobby)
+          : privateChatViewForPlayer(game, lobby, session?.userId),
         viewerRole: session?.role ?? "unknown"
       });
       return;
@@ -2473,6 +2486,86 @@ async function requestHandler(req, res) {
         combat: combatPublicView(combat, { viewerRole: "master", game }),
         combatLog: publicCombatLog(game)
       });
+      return;
+    }
+
+    if (req.method === "GET" && parsedUrl.pathname === "/chat") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
+      if (session.role === "master") {
+        sendJson(res, 200, privateChatViewForMaster(game, lobby));
+      } else {
+        sendJson(res, 200, privateChatViewForPlayer(game, lobby, session.userId));
+      }
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/chat/message") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
+      const body = await readJson(req);
+      try {
+        let playerId = session.userId;
+        if (session.role === "master") {
+          playerId = String(body.playerId || "").trim();
+          if (!playerId) {
+            sendJson(res, 400, { error: "Укажите playerId" });
+            return;
+          }
+        }
+        const entry = appendChatText(game, lobby, {
+          playerId,
+          fromRole: session.role,
+          fromName: session.userName,
+          text: body.text
+        });
+        const chat =
+          session.role === "master"
+            ? privateChatViewForMaster(game, lobby)
+            : privateChatViewForPlayer(game, lobby, session.userId);
+        sendJson(res, 200, { message: entry, privateChat: chat });
+      } catch (error) {
+        sendJson(res, 400, { error: String(error.message || error) });
+      }
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/chat/roll") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
+      const body = await readJson(req);
+      try {
+        let playerId = session.userId;
+        if (session.role === "master") {
+          playerId = String(body.playerId || "").trim();
+          if (!playerId) {
+            sendJson(res, 400, { error: "Укажите playerId" });
+            return;
+          }
+        }
+        const entry = appendChatRoll(game, lobby, {
+          playerId,
+          fromRole: session.role,
+          fromName: session.userName,
+          die: body.die
+        });
+        const chat =
+          session.role === "master"
+            ? privateChatViewForMaster(game, lobby)
+            : privateChatViewForPlayer(game, lobby, session.userId);
+        sendJson(res, 200, { message: entry, privateChat: chat });
+      } catch (error) {
+        sendJson(res, 400, { error: String(error.message || error) });
+      }
       return;
     }
 

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Игрок — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps25" />
+    <link rel="stylesheet" href="/app.css?v=maps27" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -136,6 +136,7 @@
             <button data-tab="inventory">Инвентарь</button>
             <button data-tab="level">Уровень</button>
             <button data-tab="notes">Заметки</button>
+            <button data-tab="chat">Чат с мастером<span id="playerChatBadge" class="chat-tab-badge hidden">0</span></button>
           </div>
           <div id="tabBody" class="card"></div>
         </div>
@@ -171,6 +172,6 @@
       <div class="modal-card stack npc-sheet-card" id="npcSheetModalBody"></div>
     </div>
 
-    <script type="module" src="/player.js?v=34"></script>
+    <script type="module" src="/player.js?v=35"></script>
   </body>
 </html>

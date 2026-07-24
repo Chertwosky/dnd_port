@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps26" />
+    <link rel="stylesheet" href="/app.css?v=maps27" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -166,6 +166,7 @@
           <div class="row">
             <button type="button" id="rightTabCombat" class="primary">Бой</button>
             <button type="button" id="rightTabLoot">Лут</button>
+            <button type="button" id="rightTabChat">Чат<span id="chatTabBadge" class="chat-tab-badge hidden">0</span></button>
           </div>
 
           <div id="rightPaneCombat" class="stack">
@@ -263,6 +264,24 @@
               </div>
             </div>
           </div>
+
+          <div id="rightPaneChat" class="stack hidden">
+            <div>
+              <div class="title">Чат</div>
+              <div class="subtitle">Только вы и игрок · скрытые кубики</div>
+            </div>
+            <div id="chatPlayerTabs" class="chat-player-tabs" role="tablist"></div>
+            <div class="whisper-panel">
+              <div class="whisper-panel-glow" aria-hidden="true"></div>
+              <div id="chatThreadMeta" class="whisper-meta muted">Выберите игрока</div>
+              <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+              <div class="chat-dice" id="chatDiceRow" aria-label="Скрытые кубики"></div>
+              <div class="chat-compose">
+                <textarea id="chatInput" rows="2" maxlength="800" placeholder="Шепот игроку…"></textarea>
+                <button type="button" id="chatSendBtn" class="primary">Отправить</button>
+              </div>
+            </div>
+          </div>
         </aside>
       </div>
     </div>
@@ -305,6 +324,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps26"></script>
+    <script type="module" src="/master.js?v=maps27"></script>
   </body>
 </html>

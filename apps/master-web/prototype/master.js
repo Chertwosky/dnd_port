@@ -92,8 +92,17 @@ const ui = {
   levelUpModalClose: document.getElementById("levelUpModalClose"),
   rightTabCombat: document.getElementById("rightTabCombat"),
   rightTabLoot: document.getElementById("rightTabLoot"),
+  rightTabChat: document.getElementById("rightTabChat"),
   rightPaneCombat: document.getElementById("rightPaneCombat"),
   rightPaneLoot: document.getElementById("rightPaneLoot"),
+  rightPaneChat: document.getElementById("rightPaneChat"),
+  chatTabBadge: document.getElementById("chatTabBadge"),
+  chatPlayerTabs: document.getElementById("chatPlayerTabs"),
+  chatThreadMeta: document.getElementById("chatThreadMeta"),
+  chatMessages: document.getElementById("chatMessages"),
+  chatDiceRow: document.getElementById("chatDiceRow"),
+  chatInput: document.getElementById("chatInput"),
+  chatSendBtn: document.getElementById("chatSendBtn"),
   rarityButtons: document.getElementById("rarityButtons"),
   lootRandomBtn: document.getElementById("lootRandomBtn"),
   lootPreloadBtn: document.getElementById("lootPreloadBtn"),
@@ -239,6 +248,9 @@ const state = {
   combat: null,
   rollTarget: null,
   rightTab: "combat",
+  privateChat: { threads: [], dice: [4, 6, 8, 10, 12, 20] },
+  chatPlayerId: null,
+  chatSeen: {},
   dragTokenId: null,
   openHeroId: null,
   maps: [],
@@ -3396,6 +3408,9 @@ async function syncVision() {
   if (data.loot) {
     state.loot = { ...state.loot, ...data.loot };
   }
+  if (data.privateChat) {
+    applyPrivateChat(data);
+  }
   ui.visionMode.value = state.vision.mode;
   if (state.vision.radius !== undefined) {
     ui.visionRadius.value = String(state.vision.radius);
@@ -3693,14 +3708,224 @@ function setRightTab(tab) {
   state.rightTab = tab;
   ui.rightPaneCombat?.classList.toggle("hidden", tab !== "combat");
   ui.rightPaneLoot?.classList.toggle("hidden", tab !== "loot");
+  ui.rightPaneChat?.classList.toggle("hidden", tab !== "chat");
   ui.rightTabCombat?.classList.toggle("primary", tab === "combat");
   ui.rightTabLoot?.classList.toggle("primary", tab === "loot");
+  ui.rightTabChat?.classList.toggle("primary", tab === "chat");
+  if (tab === "chat") {
+    markActiveChatSeen();
+    renderMasterChat();
+  }
 }
 
-function rarityBadge(item) {
-  const id = item.rarity || "common";
-  const label = item.rarityLabel || id;
-  return `<span class="rarity-badge rarity-${id}">${label}</span>`;
+function formatChatTime(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function activeChatThread() {
+  const threads = state.privateChat?.threads || [];
+  if (!threads.length) return null;
+  if (state.chatPlayerId) {
+    const found = threads.find((t) => t.playerId === state.chatPlayerId);
+    if (found) return found;
+  }
+  return threads[0];
+}
+
+function unreadForThread(thread) {
+  if (!thread?.messages?.length) return 0;
+  const seenId = state.chatSeen[thread.playerId] || "";
+  if (!seenId) return thread.messages.filter((m) => m.fromRole === "player").length;
+  const idx = thread.messages.findIndex((m) => m.id === seenId);
+  if (idx < 0) return thread.messages.filter((m) => m.fromRole === "player").length;
+  return thread.messages.slice(idx + 1).filter((m) => m.fromRole === "player").length;
+}
+
+function markActiveChatSeen() {
+  const thread = activeChatThread();
+  if (!thread?.messages?.length) return;
+  const last = thread.messages[thread.messages.length - 1];
+  state.chatSeen[thread.playerId] = last.id;
+  updateChatBadges();
+}
+
+function updateChatBadges() {
+  const threads = state.privateChat?.threads || [];
+  let total = 0;
+  for (const t of threads) total += unreadForThread(t);
+  if (ui.chatTabBadge) {
+    ui.chatTabBadge.textContent = String(total);
+    ui.chatTabBadge.classList.toggle("hidden", total === 0 || state.rightTab === "chat");
+  }
+}
+
+function renderChatBubbleHtml(msg) {
+  const role = msg.fromRole === "master" ? "master" : "player";
+  const who = escapeHtml(msg.fromName || (role === "master" ? "Мастер" : "Игрок"));
+  const time = escapeHtml(formatChatTime(msg.createdAt));
+  if (msg.type === "roll") {
+    return `<div class="chat-bubble from-${role}">
+      <div class="chat-bubble-who">${who} · скрытый бросок</div>
+      <div class="chat-roll">
+        <div class="chat-die-face">${escapeHtml(String(msg.roll))}</div>
+        <div class="chat-roll-label">d${escapeHtml(String(msg.die))}<br/><strong>${escapeHtml(String(msg.roll))}</strong></div>
+      </div>
+      <div class="chat-bubble-time">${time}</div>
+    </div>`;
+  }
+  return `<div class="chat-bubble from-${role}">
+    <div class="chat-bubble-who">${who}</div>
+    <div class="chat-bubble-text">${escapeHtml(msg.text || "")}</div>
+    <div class="chat-bubble-time">${time}</div>
+  </div>`;
+}
+
+function renderMasterChatDice() {
+  if (!ui.chatDiceRow) return;
+  const dice = state.privateChat?.dice || [4, 6, 8, 10, 12, 20];
+  const disabled = !activeChatThread();
+  ui.chatDiceRow.innerHTML = dice
+    .map(
+      (d) =>
+        `<button type="button" class="chat-die-btn" data-chat-die="${d}" ${disabled ? "disabled" : ""}>d${d}</button>`
+    )
+    .join("");
+}
+
+function renderMasterChat() {
+  const threads = state.privateChat?.threads || [];
+  if (ui.chatPlayerTabs) {
+    ui.chatPlayerTabs.innerHTML = "";
+    if (!threads.length) {
+      ui.chatPlayerTabs.innerHTML = `<div class="muted">Пока нет игроков в лобби</div>`;
+    } else {
+      if (!state.chatPlayerId || !threads.some((t) => t.playerId === state.chatPlayerId)) {
+        state.chatPlayerId = threads[0].playerId;
+      }
+      for (const t of threads) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `chat-player-tab${t.playerId === state.chatPlayerId ? " active" : ""}`;
+        const unread = unreadForThread(t);
+        const label = t.characterName || t.playerName || "Игрок";
+        btn.innerHTML = `${escapeHtml(label)}${
+          unread && state.rightTab !== "chat" ? `<span class="chat-tab-badge">${unread}</span>` : unread && t.playerId !== state.chatPlayerId ? `<span class="chat-tab-badge">${unread}</span>` : ""
+        }`;
+        btn.addEventListener("click", () => {
+          state.chatPlayerId = t.playerId;
+          markActiveChatSeen();
+          renderMasterChat();
+        });
+        ui.chatPlayerTabs.appendChild(btn);
+      }
+    }
+  }
+
+  const thread = activeChatThread();
+  if (ui.chatThreadMeta) {
+    if (!thread) {
+      ui.chatThreadMeta.textContent = "Выберите игрока";
+    } else {
+      const hero = thread.characterName ? ` · ${thread.characterName}` : "";
+      ui.chatThreadMeta.textContent = `${thread.playerName}${hero} · только вы двое`;
+    }
+  }
+
+  if (ui.chatMessages) {
+    const msgs = thread?.messages || [];
+    if (!msgs.length) {
+      ui.chatMessages.innerHTML = `<div class="chat-empty">Напишите скрыто или киньте кубик — другие игроки не увидят</div>`;
+    } else {
+      ui.chatMessages.innerHTML = msgs.map(renderChatBubbleHtml).join("");
+      ui.chatMessages.scrollTop = ui.chatMessages.scrollHeight;
+    }
+  }
+
+  renderMasterChatDice();
+  if (ui.chatInput) ui.chatInput.disabled = !thread;
+  if (ui.chatSendBtn) ui.chatSendBtn.disabled = !thread;
+  updateChatBadges();
+  if (state.rightTab === "chat") markActiveChatSeen();
+}
+
+function applyPrivateChat(data) {
+  if (!data?.privateChat) return;
+  const prevThread = activeChatThread();
+  const prevLast = prevThread?.messages?.length
+    ? prevThread.messages[prevThread.messages.length - 1].id
+    : "";
+  const prevSig = (state.privateChat?.threads || [])
+    .map((t) => `${t.playerId}:${t.messageCount || t.messages?.length || 0}`)
+    .join("|");
+  const draft = ui.chatInput?.value ?? null;
+  const firstSync = !state._chatBootstrapped;
+  state.privateChat = data.privateChat;
+  if (firstSync) {
+    state._chatBootstrapped = true;
+    for (const t of state.privateChat.threads || []) {
+      if (t.messages?.length) {
+        state.chatSeen[t.playerId] = t.messages[t.messages.length - 1].id;
+      }
+    }
+  }
+  const nextThread = activeChatThread();
+  const nextLast = nextThread?.messages?.length
+    ? nextThread.messages[nextThread.messages.length - 1].id
+    : "";
+  const nextSig = (state.privateChat?.threads || [])
+    .map((t) => `${t.playerId}:${t.messageCount || t.messages?.length || 0}`)
+    .join("|");
+  const sameThread = prevThread?.playerId === nextThread?.playerId;
+  if (sameThread && prevLast === nextLast && prevSig === nextSig && ui.chatMessages && state.rightTab === "chat") {
+    updateChatBadges();
+    markActiveChatSeen();
+    return;
+  }
+  renderMasterChat();
+  if (draft != null && ui.chatInput && document.activeElement === ui.chatInput) {
+    ui.chatInput.value = draft;
+  }
+}
+
+async function sendMasterChatMessage() {
+  const thread = activeChatThread();
+  const text = ui.chatInput?.value?.trim() || "";
+  if (!thread || !text) return;
+  ui.chatSendBtn.disabled = true;
+  try {
+    const data = await call("/chat/message", {
+      method: "POST",
+      body: JSON.stringify({ playerId: thread.playerId, text })
+    });
+    if (ui.chatInput) ui.chatInput.value = "";
+    applyPrivateChat(data);
+    markActiveChatSeen();
+  } catch (error) {
+    window.alert(String(error.message || error));
+  } finally {
+    if (ui.chatSendBtn) ui.chatSendBtn.disabled = !activeChatThread();
+  }
+}
+
+async function sendMasterChatRoll(die) {
+  const thread = activeChatThread();
+  if (!thread) return;
+  try {
+    const data = await call("/chat/roll", {
+      method: "POST",
+      body: JSON.stringify({ playerId: thread.playerId, die })
+    });
+    applyPrivateChat(data);
+    markActiveChatSeen();
+  } catch (error) {
+    window.alert(String(error.message || error));
+  }
 }
 
 function escapeHtml(text) {
@@ -3709,6 +3934,12 @@ function escapeHtml(text) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function rarityBadge(item) {
+  const id = item.rarity || "common";
+  const label = item.rarityLabel || id;
+  return `<span class="rarity-badge rarity-${id}">${label}</span>`;
 }
 
 function formatLootStats(item) {
@@ -4056,6 +4287,21 @@ ui.rightTabCombat?.addEventListener("click", () => setRightTab("combat"));
 ui.rightTabLoot?.addEventListener("click", () => {
   setRightTab("loot");
   refreshLoot().catch(() => {});
+});
+ui.rightTabChat?.addEventListener("click", () => setRightTab("chat"));
+ui.chatSendBtn?.addEventListener("click", () => sendMasterChatMessage().catch(console.error));
+ui.chatInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMasterChatMessage().catch(console.error);
+  }
+});
+ui.chatDiceRow?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-chat-die]");
+  if (!btn) return;
+  const die = Number(btn.dataset.chatDie);
+  if (!die) return;
+  sendMasterChatRoll(die).catch(console.error);
 });
 ui.openCombatBtn?.addEventListener("click", openCombatPicker);
 ui.openCombatBtnSide?.addEventListener("click", openCombatPicker);
