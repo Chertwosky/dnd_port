@@ -1,7 +1,7 @@
 /**
  * Общая полоса инициативы (мастер + игрок).
  * Анимация «падения» портретов при появлении новых бросков.
- * Клик по NPC/монстру открывает карточку (opts.onOpenNpc).
+ * Клик по бойцу открывает карточку (персонаж / NPC) через opts.onOpenSheet.
  */
 
 function escapeHtml(s) {
@@ -30,16 +30,29 @@ function portraitHtml(c) {
   return `<div class="init-portrait placeholder ${kind}" aria-hidden="true">${escapeHtml(letter)}</div>`;
 }
 
+function isHeroCombatant(c) {
+  return Boolean(c?.characterId) || c?.type === "player";
+}
+
 function hasSheet(combat, c) {
-  if (c.type === "player") return false;
+  if (isHeroCombatant(c)) return true;
   if (combat?.npcSheets?.[c.id]) return true;
   return c.type === "npc" || c.type === "monster";
+}
+
+function sheetTitle(c) {
+  return isHeroCombatant(c) ? "Открыть карточку персонажа" : "Открыть карточку NPC";
 }
 
 /**
  * @param {HTMLElement} root
  * @param {object|null} combat
- * @param {{ highlightTokenId?: string|null, animate?: boolean, onOpenNpc?: (combatant: object, sheet: object|null) => void }} [opts]
+ * @param {{
+ *   highlightTokenId?: string|null,
+ *   animate?: boolean,
+ *   onOpenSheet?: (combatant: object, sheet: object|null) => void,
+ *   onOpenNpc?: (combatant: object, sheet: object|null) => void
+ * }} [opts]
  */
 export function renderInitiativeBar(root, combat, opts = {}) {
   if (!root) return;
@@ -83,7 +96,9 @@ export function renderInitiativeBar(root, combat, opts = {}) {
         .join(" ");
       const delay = shouldAnimate ? `style="animation-delay:${Math.min(i, 12) * 55}ms"` : "";
       return `<article class="${classes}" data-id="${escapeAttr(c.id)}" data-combatant-id="${escapeAttr(c.id)}" ${
-        openable ? `data-open-npc="1" title="Открыть карточку NPC" role="button" tabindex="0"` : ""
+        openable
+          ? `data-open-sheet="1" title="${escapeAttr(sheetTitle(c))}" role="button" tabindex="0"`
+          : ""
       } ${delay}>
         ${portraitHtml(c)}
         <div class="init-meta">
@@ -102,7 +117,9 @@ export function renderInitiativeBar(root, combat, opts = {}) {
       return `<article class="init-card init-card--pending ${isMine ? "is-mine" : ""} ${
         openable ? "init-card--openable" : ""
       }" data-id="${escapeAttr(c.id)}" data-combatant-id="${escapeAttr(c.id)}" ${
-        openable ? `data-open-npc="1" title="Открыть карточку NPC" role="button" tabindex="0"` : ""
+        openable
+          ? `data-open-sheet="1" title="${escapeAttr(sheetTitle(c))}" role="button" tabindex="0"`
+          : ""
       }>
         ${portraitHtml(c)}
         <div class="init-meta">
@@ -128,8 +145,9 @@ export function renderInitiativeBar(root, combat, opts = {}) {
     </div>
   `;
 
-  if (typeof opts.onOpenNpc === "function") {
-    root.querySelectorAll("[data-open-npc]").forEach((el) => {
+  const openHandler = opts.onOpenSheet || opts.onOpenNpc;
+  if (typeof openHandler === "function") {
+    root.querySelectorAll("[data-open-sheet]").forEach((el) => {
       const open = () => {
         const id = el.getAttribute("data-combatant-id");
         const cbt =
@@ -137,7 +155,7 @@ export function renderInitiativeBar(root, combat, opts = {}) {
           null;
         if (!cbt) return;
         const sheet = combat.npcSheets?.[cbt.id] || null;
-        opts.onOpenNpc(cbt, sheet);
+        openHandler(cbt, sheet);
       };
       el.addEventListener("click", (e) => {
         e.preventDefault();

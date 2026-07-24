@@ -623,6 +623,18 @@ button.warn {
   border-color: #5a7294;
 }
 
+.modal-card.hero-sheet-card {
+  width: min(720px, 96vw);
+  max-height: min(92vh, 900px);
+  background:
+    radial-gradient(1200px 400px at 10% -10%, rgba(75, 137, 255, 0.18), transparent 55%),
+    radial-gradient(800px 300px at 100% 0%, rgba(65, 196, 136, 0.08), transparent 50%),
+    var(--panel);
+  border-color: #3a4f6d;
+  container-type: inline-size;
+  container-name: hero-sheet;
+}
+
 .npc-sheet-block {
   margin-top: 10px;
 }

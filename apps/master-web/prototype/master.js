@@ -1,4 +1,4 @@
-import { renderInitiativeBar } from "/initiative-bar.js?v=2";
+import { renderInitiativeBar } from "/initiative-bar.js?v=3";
 import { openNpcSheetModal, closeNpcSheetModal, buildNpcSheetHtml } from "/npc-sheet.js?v=2";
 import { skillLabelRu } from "/character-sheet.js?v=17";
 
@@ -2972,9 +2972,26 @@ function openNpcFromInitiative(combatant, sheet) {
   );
 }
 
+function openFromInitiative(combatant, sheet) {
+  if (combatant?.characterId || combatant?.type === "player") {
+    if (!combatant.characterId) {
+      if (ui.combatStatus) {
+        ui.combatStatus.textContent = "У этого героя нет characterId — карточку открыть нельзя";
+      }
+      return;
+    }
+    openHeroCard(combatant.characterId).catch((error) => {
+      console.error(error);
+      if (ui.combatStatus) ui.combatStatus.textContent = String(error.message || error);
+    });
+    return;
+  }
+  openNpcFromInitiative(combatant, sheet);
+}
+
 function renderCombatInitiativeBar() {
   renderInitiativeBar(ui.initiativeBar, state.combat, {
-    onOpenNpc: openNpcFromInitiative
+    onOpenSheet: openFromInitiative
   });
 }
 

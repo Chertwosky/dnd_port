@@ -1,5 +1,5 @@
 import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu } from "/character-sheet.js?v=17";
-import { renderInitiativeBar } from "/initiative-bar.js?v=2";
+import { renderInitiativeBar } from "/initiative-bar.js?v=3";
 import { openNpcSheetModal } from "/npc-sheet.js?v=2";
 
 const SESSION_KEY = "dnd_player_session";
@@ -1698,12 +1698,48 @@ async function switchPlayerMap(mapId) {
   await refreshMap();
 }
 
+async function openHeroSheetReadonly(combatant) {
+  const characterId = combatant?.characterId;
+  if (!characterId || !ui.npcSheetModal || !ui.npcSheetModalBody) return;
+  try {
+    const character = await call(`/characters/${characterId}`);
+    const close = () => {
+      ui.npcSheetModal.classList.add("hidden");
+      ui.npcSheetModalBody.classList.remove("npc-sheet-card", "hero-sheet-card");
+      ui.npcSheetModalBody.innerHTML = "";
+    };
+    ui.npcSheetModalBody.classList.add("modal-card", "stack", "hero-sheet-card");
+    ui.npcSheetModalBody.classList.remove("npc-sheet-card");
+    ui.npcSheetModalBody.innerHTML = buildCharacterSheetHtml(character, {
+      readonly: true,
+      showClose: true
+    });
+    ui.npcSheetModal.classList.remove("hidden");
+    ui.npcSheetModalBody.querySelector("#closeHeroCardBtn")?.addEventListener("click", close);
+    ui.npcSheetModal.querySelector("[data-npc-sheet-backdrop], .modal-backdrop")?.addEventListener("click", close, {
+      once: true
+    });
+    ui.npcSheetModalBody.querySelector("[data-download-character]")?.addEventListener("click", () => {
+      downloadCharacterJson(character);
+    });
+  } catch (error) {
+    console.error(error);
+    if (ui.initiativeRollResult) {
+      ui.initiativeRollResult.textContent = String(error.message || error);
+    }
+  }
+}
+
 function renderPlayerInitiative() {
   const combat = state.mapVision?.combat || null;
   const myTokenId = combat?.myCombatant?.tokenId || null;
   renderInitiativeBar(ui.playerInitiativeBar, combat, {
     highlightTokenId: myTokenId,
-    onOpenNpc: (combatant, sheet) => {
+    onOpenSheet: (combatant, sheet) => {
+      if (combatant?.characterId || combatant?.type === "player") {
+        openHeroSheetReadonly(combatant).catch(console.error);
+        return;
+      }
       const token = (state.mapVision?.tokens || []).find((t) => t.id === combatant.tokenId) || {
         name: combatant.name,
         hpCurrent: combatant.hpCurrent,
