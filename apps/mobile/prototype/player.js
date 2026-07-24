@@ -764,9 +764,50 @@ const TILE_ICONS = {
   crystal: "💎"
 };
 const OVERLAY_ICONS = { chest: "📦", stash: "✦" };
+const OVERLAY_LABELS = { chest: "Сундук", stash: "Тайник" };
+
+let playerMapTipTimer = null;
+
+function hidePlayerMapTip() {
+  if (playerMapTipTimer) {
+    clearTimeout(playerMapTipTimer);
+    playerMapTipTimer = null;
+  }
+  document.querySelectorAll(".cell.map-tip-hot").forEach((el) => el.classList.remove("map-tip-hot"));
+  const tip = document.getElementById("playerMapCellTip");
+  if (tip) tip.classList.add("hidden");
+}
+
+function showPlayerMapTip(cell, parts, { durationMs = 2800 } = {}) {
+  if (!cell || !parts?.length) return;
+  hidePlayerMapTip();
+  cell.classList.add("map-tip-hot");
+  let tip = document.getElementById("playerMapCellTip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "playerMapCellTip";
+    tip.className = "map-cell-tip hidden";
+    document.body.appendChild(tip);
+  }
+  tip.innerHTML = parts.map((p) => `<div>${escapeHtml(p)}</div>`).join("");
+  tip.classList.remove("hidden");
+  const rect = cell.getBoundingClientRect();
+  const pad = 10;
+  const tw = tip.offsetWidth || 140;
+  const th = tip.offsetHeight || 36;
+  let left = rect.left + rect.width / 2 - tw / 2;
+  let top = rect.top - th - 8;
+  if (top < pad) top = rect.bottom + 8;
+  if (left < pad) left = pad;
+  if (left + tw > window.innerWidth - pad) left = window.innerWidth - tw - pad;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+  playerMapTipTimer = setTimeout(hidePlayerMapTip, durationMs);
+}
 
 function fillMapGrid(gridEl, width, height) {
   if (!gridEl) return;
+  hidePlayerMapTip();
   const visible = new Set((state.mapVision?.visibleCells || []).map((c) => `${c.x}:${c.y}`));
   const tiles = state.mapVision?.tiles || {};
   const overlays = state.mapVision?.overlays || {};
@@ -807,8 +848,9 @@ function fillMapGrid(gridEl, width, height) {
         cell.appendChild(mark);
       }
 
-      if (isVisible && tokenMap.has(cellKey)) {
-        const t = tokenMap.get(cellKey);
+      const tokenOnCell = isVisible && tokenMap.has(cellKey) ? tokenMap.get(cellKey) : null;
+      if (tokenOnCell) {
+        const t = tokenOnCell;
         const token = document.createElement("div");
         const isMine = Boolean(myCharId && t.characterId === myCharId);
         token.className = `token ${t.type}${isMine ? " mine" : ""}${
@@ -833,6 +875,9 @@ function fillMapGrid(gridEl, width, height) {
             renderMap();
             return;
           }
+          const kind =
+            t.type === "monster" ? "Монстр" : t.type === "player" ? "Герой" : "NPC";
+          showPlayerMapTip(cell, [`${kind}: ${t.name}`]);
           openMapTokenSheet(t).catch((err) => showRollToast(String(err.message || err)));
         });
         cell.appendChild(token);
@@ -840,10 +885,20 @@ function fillMapGrid(gridEl, width, height) {
 
       if (isVisible) {
         cell.addEventListener("click", (e) => {
-          if (!state.selectedTokenId) return;
-          e.preventDefault();
-          e.stopPropagation();
-          moveSelectedTokenTo(x, y).catch((err) => showRollToast(String(err.message || err)));
+          if (state.selectedTokenId) {
+            e.preventDefault();
+            e.stopPropagation();
+            moveSelectedTokenTo(x, y).catch((err) => showRollToast(String(err.message || err)));
+            return;
+          }
+          if (overlay) {
+            e.preventDefault();
+            e.stopPropagation();
+            const icon = OVERLAY_ICONS[overlay.type] || "✦";
+            const name =
+              String(overlay.name || "").trim() || OVERLAY_LABELS[overlay.type] || "Объект";
+            showPlayerMapTip(cell, [`${icon} ${name}`]);
+          }
         });
       }
 
@@ -2494,6 +2549,11 @@ ui.mapInspectOpenBtn?.addEventListener("click", () => openMapInspect());
 ui.playerMapWrap?.addEventListener("click", (e) => {
   if (state.selectedTokenId) return;
   if (e.target.closest?.(".token")) return;
+  if (e.target.closest?.(".overlay-mark")) return;
+  if (e.target.closest?.(".cell.map-tip-hot")) return;
+  // клетка с сундуком/тайником — подпись, не осмотр
+  const cell = e.target.closest?.(".cell");
+  if (cell?.querySelector?.(".overlay-mark")) return;
   openMapInspect();
 });
 ui.mapInspectCloseBtn?.addEventListener("click", () => closeMapInspect());
