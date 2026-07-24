@@ -2564,7 +2564,7 @@ ui.playerShowNamesBtn?.addEventListener("click", () => {
   ui.playerShowNamesBtn.classList.toggle("primary", state.showTokenNames);
   ui.playerShowNamesBtn.setAttribute("aria-pressed", state.showTokenNames ? "true" : "false");
   renderMap();
-  if (mapInspect.open) paintInspectMap();
+  if (mapInspect.open) renderInspectMap();
 });
 ui.playerMapWrap?.addEventListener("click", (e) => {
   if (state.selectedTokenId) return;
