@@ -2277,9 +2277,17 @@ async function requestHandler(req, res) {
       const mapId = decodeURIComponent(parsedUrl.pathname.split("/")[2]);
       try {
         const map = setActiveMap(game, mapId);
+        // Игроки со «залипшим» viewingMapId тоже едут за опубликованной активной картой.
+        if (map.published) {
+          for (const m of lobby.members || []) {
+            if (m.role === "master") continue;
+            m.viewingMapId = map.id;
+          }
+        }
         sendJson(res, 200, {
           ok: true,
           activeMapId: map.id,
+          playerMapId: game.playerMapId,
           maps: mapsPublicMeta(game, { forMaster: true })
         });
       } catch (e) {

@@ -96,11 +96,13 @@ export function getPlayerViewMap(game, preferredMapId = null) {
   return game.maps.find((m) => m.published) || game.maps[0];
 }
 
-/** ТВ-зритель: активная карта мастера, если опубликована; иначе как у игроков. */
+/** ТВ-зритель: активная карта мастера, если открыта игрокам; иначе дефолт игроков. */
 export function getSpectatorViewMap(game) {
   ensureMapSystem(game);
   const active = game.maps.find((m) => m.id === game.activeMapId && m.published);
   if (active) return active;
+  const playerDefault = game.maps.find((m) => m.id === game.playerMapId && m.published);
+  if (playerDefault) return playerDefault;
   return getPlayerViewMap(game, null);
 }
 
@@ -124,6 +126,10 @@ export function setActiveMap(game, mapId) {
   if (!map) throw new Error("Карта не найдена");
   game.activeMapId = map.id;
   syncActiveMapAlias(game);
+  // Уже открытая игрокам карта при смене вкладки мастера становится картой стола (игроки + ТВ).
+  if (map.published) {
+    game.playerMapId = map.id;
+  }
   return map;
 }
 

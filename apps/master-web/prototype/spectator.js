@@ -220,12 +220,15 @@ function renderCombatLog() {
 
 function renderMeta() {
   const name = state.vision?.mapName || "—";
-  const publishedFollow =
-    state.vision?.mapId && state.vision?.activeMapId && state.vision.mapId === state.vision.activeMapId
-      ? "· следует за мастером"
-      : "· карта для игроков";
+  const mapId = state.vision?.mapId || null;
+  const activeId = state.vision?.activeMapId || null;
+  const playerId = state.vision?.playerMapId || null;
+  let follow = "";
+  if (mapId && activeId && mapId === activeId) follow = "· следует за мастером";
+  else if (mapId && playerId && mapId === playerId) follow = "· карта игроков";
+  else follow = "· опубликованная карта";
   if (ui.mapMeta) {
-    ui.mapMeta.textContent = `${name} ${publishedFollow}`;
+    ui.mapMeta.textContent = `${name} ${follow}`;
   }
   if (ui.lobbyTitle) {
     ui.lobbyTitle.textContent = state.lobbyTitle || "сессия";

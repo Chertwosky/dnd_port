@@ -3789,7 +3789,7 @@ function renderMapTabs() {
   const active = state.maps.find((m) => m.isActive);
   if (ui.mapTabsStatus) {
     ui.mapTabsStatus.textContent = active
-      ? `Активна: ${active.name}${active.published ? " (видят игроки)" : " (только мастер)"}${state.playerMapId === active.id ? " · карта игроков по умолчанию" : ""}`
+      ? `Активна: ${active.name}${active.published ? " (видят игроки · ТВ)" : " (только мастер)"}${state.playerMapId === active.id ? " · карта стола" : ""}`
       : "";
   }
 }
