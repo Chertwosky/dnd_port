@@ -119,6 +119,7 @@ const state = {
   inventory: [],
   rollMode: "normal",
   selectedTokenId: null,
+  npcCache: null,
   privateChat: { thread: null, dice: [4, 6, 8, 10, 12, 20] },
   chatSeenId: "",
   mapFitCols: 0,
@@ -822,16 +823,18 @@ function fillMapGrid(gridEl, width, height) {
         } else {
           token.textContent = t.name.slice(0, 2).toUpperCase();
         }
-        if (isMine) {
-          token.title = "Ваш токен · тап, затем клетка";
-          token.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
+        token.title = isMine ? "Ваш токен · тап — ход, ещё раз — снять" : `Открыть карточку: ${t.name}`;
+        token.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (isMine) {
             state.selectedTokenId = state.selectedTokenId === t.id ? null : t.id;
             updateMoveHint();
             renderMap();
-          });
-        }
+            return;
+          }
+          openMapTokenSheet(t).catch((err) => showRollToast(String(err.message || err)));
+        });
         cell.appendChild(token);
       }
 
@@ -2258,6 +2261,80 @@ async function openHeroSheetReadonly(combatant) {
   }
 }
 
+async function ensurePlayerNpcCache() {
+  if (Array.isArray(state.npcCache) && state.npcCache.length) return state.npcCache;
+  try {
+    state.npcCache = await call("/npc");
+  } catch {
+    state.npcCache = [];
+  }
+  return state.npcCache;
+}
+
+function findNpcForPlayerToken(token) {
+  if (!token) return null;
+  const list = state.npcCache || [];
+  if (token.npcId) {
+    const byId = list.find((n) => n.id === token.npcId);
+    if (byId) return byId;
+  }
+  const combatSheets = state.mapVision?.combat?.npcSheets || {};
+  for (const sheet of Object.values(combatSheets)) {
+    if (!sheet) continue;
+    if (token.npcId && sheet.id === token.npcId) return sheet;
+    if (String(sheet.name || "").trim().toLowerCase() === String(token.name || "").trim().toLowerCase()) {
+      return sheet;
+    }
+  }
+  const name = String(token.name || "")
+    .replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .trim()
+    .toLowerCase();
+  if (!name) return null;
+  return (
+    list.find((n) => String(n.name || "").trim().toLowerCase() === name) ||
+    list.find((n) => name.startsWith(String(n.name || "").trim().toLowerCase())) ||
+    null
+  );
+}
+
+async function openMapTokenSheet(token) {
+  if (!token) return;
+  if (token.characterId || token.type === "player") {
+    if (!token.characterId) {
+      showRollToast("У токена нет листа персонажа");
+      return;
+    }
+    await openHeroSheetReadonly({
+      characterId: token.characterId,
+      name: token.name,
+      type: "player"
+    });
+    return;
+  }
+  await ensurePlayerNpcCache();
+  const npc = findNpcForPlayerToken(token) || {
+    name: token.name,
+    type: token.type || "npc",
+    hp: token.hpMax ?? 10,
+    ac: "—",
+    speed: "—",
+    abilities: {},
+    actions: [],
+    notes: "Карточка недоступна — только токен на карте."
+  };
+  openNpcSheetModal(
+    { modal: ui.npcSheetModal, body: ui.npcSheetModalBody },
+    {
+      ...npc,
+      hpCurrent: token.hpCurrent ?? npc.hpCurrent ?? npc.hp,
+      hpMax: token.hpMax ?? npc.hpMax ?? npc.hp
+    },
+    { token, viewerRole: "player" }
+  );
+}
+
 function renderPlayerInitiative() {
   const combat = state.mapVision?.combat || null;
   const myTokenId = combat?.myCombatant?.tokenId || null;
@@ -2415,7 +2492,7 @@ document.getElementById("playerMapDice")?.addEventListener("click", (e) => {
 ui.mapInspectOpenBtn?.addEventListener("click", () => openMapInspect());
 ui.playerMapWrap?.addEventListener("click", (e) => {
   if (state.selectedTokenId) return;
-  if (e.target.closest?.(".token.mine")) return;
+  if (e.target.closest?.(".token")) return;
   openMapInspect();
 });
 ui.mapInspectCloseBtn?.addEventListener("click", () => closeMapInspect());

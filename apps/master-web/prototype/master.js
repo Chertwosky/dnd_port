@@ -263,6 +263,10 @@ const state = {
   chatPlayerId: null,
   chatSeen: {},
   dragTokenId: null,
+  dragTokenOrigin: null,
+  dragTokenMoved: false,
+  mapTipTimer: null,
+  mapTipCell: null,
   openHeroId: null,
   openHeroSnapshot: null,
   maps: [],
@@ -855,6 +859,87 @@ function ensureMapFitObserver() {
   mapFitObserver.observe(wrap);
 }
 
+function hideMapCellTip() {
+  if (state.mapTipTimer) {
+    clearTimeout(state.mapTipTimer);
+    state.mapTipTimer = null;
+  }
+  state.mapTipCell = null;
+  document.querySelectorAll(".cell.map-tip-hot").forEach((el) => el.classList.remove("map-tip-hot"));
+  const tip = document.getElementById("mapCellTip");
+  if (tip) tip.classList.add("hidden");
+}
+
+function showMapCellTip(cell, clientX, clientY, parts) {
+  if (!parts.length) return;
+  hideMapCellTip();
+  cell.classList.add("map-tip-hot");
+  state.mapTipCell = cell;
+  let tip = document.getElementById("mapCellTip");
+  if (!tip) {
+    tip = document.createElement("div");
+    tip.id = "mapCellTip";
+    tip.className = "map-cell-tip hidden";
+    document.body.appendChild(tip);
+  }
+  tip.innerHTML = parts.map((p) => `<div>${escapeHtml(p)}</div>`).join("");
+  tip.classList.remove("hidden");
+  const pad = 12;
+  const tw = tip.offsetWidth || 160;
+  const th = tip.offsetHeight || 40;
+  let left = clientX + 14;
+  let top = clientY + 14;
+  if (left + tw > window.innerWidth - pad) left = clientX - tw - 10;
+  if (top + th > window.innerHeight - pad) top = clientY - th - 10;
+  tip.style.left = `${Math.max(pad, left)}px`;
+  tip.style.top = `${Math.max(pad, top)}px`;
+}
+
+function scheduleMapCellTip(cell, x, y, tileId, overlay, token) {
+  if (state.isPainting || state.dragTokenId) return;
+  if (state.mapTipTimer) clearTimeout(state.mapTipTimer);
+  state.mapTipTimer = setTimeout(() => {
+    const parts = [];
+    if (tileId) {
+      const tex = PAINT_TEXTURES.find((t) => t.id === tileId);
+      parts.push(`Текстура: ${tex?.label || tileId}${tex?.icon ? ` ${tex.icon}` : ""}`);
+    }
+    if (overlay) {
+      const group = findOverlayGroupAt(x, y);
+      const labelName = group?.name || overlay.name || (overlay.type === "stash" ? "Тайник" : "Сундук");
+      parts.push(
+        `${labelName}${overlay.visibleToPlayers ? " · видят игроки" : " · только мастер"}`
+      );
+    }
+    if (token) {
+      parts.push(`Токен: ${token.name} (${TOKEN_TYPE_RU[token.type] || token.type})`);
+    }
+    if (!parts.length) return;
+    const rect = cell.getBoundingClientRect();
+    showMapCellTip(cell, rect.left + rect.width / 2, rect.top + rect.height / 2, parts);
+  }, 480);
+}
+
+async function openTokenFromMap(token) {
+  if (!token) return;
+  setRollTargetFromCombatant({
+    name: token.name,
+    type: token.type,
+    characterId: token.characterId || null,
+    npcId: token.npcId || null,
+    tokenId: token.id
+  });
+  if (token.characterId || token.type === "player") {
+    if (!token.characterId) {
+      if (ui.combatStatus) ui.combatStatus.textContent = "У токена нет characterId";
+      return;
+    }
+    await openHeroCard(token.characterId);
+    return;
+  }
+  await openNpcSheetForToken(token);
+}
+
 function renderMap() {
   const width = Math.max(1, Math.min(80, state.mapWidth || 40));
   const height = Math.max(1, Math.min(60, state.mapHeight || 30));
@@ -863,6 +948,7 @@ function renderMap() {
   const wrap = ui.mapGrid?.closest(".map-wrap");
   if (wrap) applyMapFit(wrap, ui.mapGrid, width, height);
   ensureMapFitObserver();
+  hideMapCellTip();
 
   const visibleSet = new Set(state.visibleCells.map((c) => key(c.x, c.y)));
   const tokenMap = new Map();
@@ -908,7 +994,7 @@ function renderMap() {
       if (token) {
         const node = document.createElement("div");
         node.className = `token ${token.type}${state.dragTokenId === token.id ? " dragging" : ""}`;
-        node.title = `${token.name} · перетащите`;
+        node.title = `${token.name} · клик — карточка · тянуть — переместить`;
         node.dataset.tokenId = token.id;
         if (token.portraitUrl) {
           node.classList.add("has-portrait");
@@ -921,9 +1007,17 @@ function renderMap() {
           if (e.button !== 0) return;
           e.preventDefault();
           e.stopPropagation();
+          hideMapCellTip();
           state.dragTokenId = token.id;
+          state.dragTokenOrigin = { x: e.clientX, y: e.clientY };
+          state.dragTokenMoved = false;
           state.isPainting = false;
           node.classList.add("dragging");
+        });
+        node.addEventListener("mousemove", (e) => {
+          if (state.dragTokenId !== token.id || !state.dragTokenOrigin) return;
+          const dist = Math.hypot(e.clientX - state.dragTokenOrigin.x, e.clientY - state.dragTokenOrigin.y);
+          if (dist > 6) state.dragTokenMoved = true;
         });
         cell.appendChild(node);
       }
@@ -932,6 +1026,7 @@ function renderMap() {
         if (state.dragTokenId) return;
         if (e.button === 0) {
           e.preventDefault();
+          hideMapCellTip();
           state.isPainting = true;
           state.eraseStroke = false;
           paintCell(x, y);
@@ -939,15 +1034,25 @@ function renderMap() {
         }
         if (e.button === 2) {
           e.preventDefault();
+          hideMapCellTip();
           state.isPainting = true;
           state.eraseStroke = true;
           paintCell(x, y, "erase");
         }
       });
-      cell.addEventListener("mouseenter", () => {
+      cell.addEventListener("mouseenter", (e) => {
         if (state.isPainting && !state.dragTokenId) {
           paintCell(x, y, state.eraseStroke ? "erase" : state.paintTextureId);
+          return;
         }
+        scheduleMapCellTip(cell, x, y, tileId, overlay, token || null);
+      });
+      cell.addEventListener("mouseleave", () => {
+        if (state.mapTipTimer) {
+          clearTimeout(state.mapTipTimer);
+          state.mapTipTimer = null;
+        }
+        if (state.mapTipCell === cell) hideMapCellTip();
       });
       cell.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -962,12 +1067,36 @@ function renderMap() {
   });
 }
 
+window.addEventListener("mousemove", (e) => {
+  if (!state.dragTokenId || !state.dragTokenOrigin) return;
+  const dist = Math.hypot(e.clientX - state.dragTokenOrigin.x, e.clientY - state.dragTokenOrigin.y);
+  if (dist > 6) state.dragTokenMoved = true;
+});
+
 window.addEventListener("mouseup", async (e) => {
   state.isPainting = false;
   state.eraseStroke = false;
   if (!state.dragTokenId) return;
   const tokenId = state.dragTokenId;
+  const origin = state.dragTokenOrigin;
+  const moved =
+    state.dragTokenMoved ||
+    (origin ? Math.hypot(e.clientX - origin.x, e.clientY - origin.y) > 6 : false);
+  const token = (state.tokens || []).find((t) => t.id === tokenId) || null;
   state.dragTokenId = null;
+  state.dragTokenOrigin = null;
+  state.dragTokenMoved = false;
+
+  if (!moved && token) {
+    try {
+      await openTokenFromMap(token);
+    } catch (error) {
+      console.error(error);
+    }
+    await syncVision();
+    return;
+  }
+
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const cell = el?.closest?.(".cell");
   if (cell?.dataset?.x != null && cell?.dataset?.y != null) {
