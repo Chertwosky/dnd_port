@@ -59,6 +59,7 @@ import {
   privateChatViewForMaster,
   privateChatViewForPlayer
 } from "./modules/private-chat.mjs";
+import { parseDiceFormula, rollDiceFormula, rollNdM, STANDARD_DICE } from "./modules/dice-formula.mjs";
 import {
   addMapDoc,
   createEmptyMapDoc,
@@ -2292,93 +2293,184 @@ async function requestHandler(req, res) {
       }
       const body = await readJson(req);
       const kind = String(body.kind || "").trim();
-      if (kind !== "ability" && kind !== "skill") {
-        sendJson(res, 400, { error: "kind: ability или skill" });
+      const allowedKinds = new Set(["ability", "skill", "attack", "damage", "dice"]);
+      if (!allowedKinds.has(kind)) {
+        sendJson(res, 400, { error: "kind: ability, skill, attack, damage или dice" });
         return;
       }
       const member = lobby.members.find((m) => m.id === session.userId);
       let character = null;
       let npc = null;
-      let actorName = "";
+      let actorName = session.userName || "Участник";
 
-      if (session.role === "player") {
-        const characterId = member?.characterId;
-        if (!characterId) {
-          sendJson(res, 400, { error: "Сначала привяжите персонажа" });
-          return;
-        }
-        if (body.characterId && body.characterId !== characterId) {
-          sendJson(res, 403, { error: "Можно бросать только за своего персонажа" });
-          return;
-        }
-        character = game.characters.find((c) => c.id === characterId);
-        if (!character) {
-          sendJson(res, 404, { error: "Персонаж не найден" });
-          return;
-        }
-        actorName = character.name;
-      } else {
-        if (body.characterId) {
-          character = game.characters.find((c) => c.id === body.characterId);
+      const needsActor = kind !== "dice";
+      if (needsActor) {
+        if (session.role === "player") {
+          const characterId = member?.characterId;
+          if (!characterId) {
+            sendJson(res, 400, { error: "Сначала привяжите персонажа" });
+            return;
+          }
+          if (body.characterId && body.characterId !== characterId) {
+            sendJson(res, 403, { error: "Можно бросать только за своего персонажа" });
+            return;
+          }
+          character = game.characters.find((c) => c.id === characterId);
           if (!character) {
             sendJson(res, 404, { error: "Персонаж не найден" });
             return;
           }
           actorName = character.name;
         } else {
-          npc = findNpcInGame(game, {
-            npcId: body.npcId,
-            tokenId: body.tokenId,
-            name: body.actorName
-          });
-          if (!npc && body.tokenId) {
-            const token = (game.map?.tokens || []).find((t) => t.id === body.tokenId);
-            if (token && (token.type === "npc" || token.type === "monster")) {
-              npc = {
-                id: token.npcId || token.id,
-                name: token.name,
-                abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
-                skills: []
-              };
+          if (body.characterId) {
+            character = game.characters.find((c) => c.id === body.characterId);
+            if (!character) {
+              sendJson(res, 404, { error: "Персонаж не найден" });
+              return;
+            }
+            actorName = character.name;
+          } else if (kind === "ability" || kind === "skill" || kind === "attack" || kind === "damage") {
+            npc = findNpcInGame(game, {
+              npcId: body.npcId,
+              tokenId: body.tokenId,
+              name: body.actorName
+            });
+            if (!npc && body.tokenId) {
+              const token = (game.map?.tokens || []).find((t) => t.id === body.tokenId);
+              if (token && (token.type === "npc" || token.type === "monster")) {
+                npc = {
+                  id: token.npcId || token.id,
+                  name: token.name,
+                  abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+                  skills: [],
+                  weapons: []
+                };
+              }
+            }
+            if (!character && !npc && (kind === "ability" || kind === "skill")) {
+              sendJson(res, 400, { error: "Укажите characterId или npcId/tokenId" });
+              return;
+            }
+            if (npc) actorName = npc.name;
+            if (!character && !npc && (kind === "attack" || kind === "damage")) {
+              // мастер может кинуть формулу урона без актора
+              actorName = session.userName || "Мастер";
             }
           }
-          if (!npc) {
-            sendJson(res, 400, { error: "Укажите characterId или npcId/tokenId" });
-            return;
-          }
-          actorName = npc.name;
         }
       }
 
       let bonus = 0;
       let label = "";
       let abilityKey = null;
+      let die = 20;
+      let roll = 0;
+      let total = 0;
+      let detail = "";
+      let rolls = null;
+      let weaponName = null;
 
-      if (kind === "ability") {
-        abilityKey = String(body.ability || "").toLowerCase();
-        if (!ABILITY_LABELS_RU[abilityKey]) {
-          sendJson(res, 400, { error: "Неизвестная характеристика" });
-          return;
+      try {
+        if (kind === "dice") {
+          const sides = Number(body.die);
+          if (!STANDARD_DICE.includes(sides)) {
+            sendJson(res, 400, { error: `Кубик: ${STANDARD_DICE.map((d) => `d${d}`).join(", ")}` });
+            return;
+          }
+          const count = Math.max(1, Math.min(10, Number(body.count) || 1));
+          const rolled = rollNdM(count, sides);
+          die = sides;
+          total = rolled.total;
+          detail = rolled.detail;
+          rolls = rolled.parts;
+          label = count > 1 ? `${count}d${sides}` : `d${sides}`;
+          actorName =
+            session.role === "player"
+              ? game.characters.find((c) => c.id === member?.characterId)?.name || session.userName
+              : session.userName || "Мастер";
+          if (count === 1) {
+            const m = String(detail).match(/d\d+\((\d+)\)/);
+            roll = m ? Number(m[1]) : total;
+          } else {
+            roll = total;
+          }
+        } else if (kind === "ability") {
+          abilityKey = String(body.ability || "").toLowerCase();
+          if (!ABILITY_LABELS_RU[abilityKey]) {
+            sendJson(res, 400, { error: "Неизвестная характеристика" });
+            return;
+          }
+          label = ABILITY_LABELS_RU[abilityKey];
+          bonus = character ? characterAbilityMod(character, abilityKey) : npcAbilityMod(npc, abilityKey);
+          roll = rollD20();
+          total = roll + bonus;
+          detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+        } else if (kind === "skill") {
+          const skillKey = body.skillKey || body.skill || body.label;
+          if (!skillKey) {
+            sendJson(res, 400, { error: "Укажите skillKey" });
+            return;
+          }
+          const resolved = character
+            ? characterSkillBonus(character, skillKey)
+            : npcSkillBonus(npc, skillKey, body.ability);
+          bonus = resolved.bonus;
+          label = resolved.label;
+          abilityKey = resolved.ability;
+          roll = rollD20();
+          total = roll + bonus;
+          detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+        } else if (kind === "attack" || kind === "damage") {
+          let weapon = null;
+          const weapons = character?.weapons || npc?.weapons || [];
+          if (body.weaponIndex != null && Number.isFinite(Number(body.weaponIndex))) {
+            weapon = weapons[Number(body.weaponIndex)] || null;
+          }
+          if (!weapon && body.weaponName) {
+            const want = String(body.weaponName).trim().toLowerCase();
+            weapon = weapons.find((w) => String(w.name || "").trim().toLowerCase() === want) || null;
+          }
+          weaponName = weapon?.name || body.weaponName || body.label || "Оружие";
+          abilityKey = String(weapon?.ability || body.ability || "str").toLowerCase();
+          if (!ABILITY_LABELS_RU[abilityKey]) abilityKey = "str";
+
+          if (kind === "attack") {
+            const mod = character
+              ? characterAbilityMod(character, abilityKey)
+              : npc
+                ? npcAbilityMod(npc, abilityKey)
+                : 0;
+            const pb = character
+              ? Number(character.proficiencyBonus || 2)
+              : Number(npc?.proficiencyBonus || 2);
+            const proficient = weapon ? Boolean(weapon.proficient) : body.proficient !== false;
+            bonus = mod + (proficient ? pb : 0);
+            label = `Атака · ${weaponName}`;
+            roll = rollD20();
+            total = roll + bonus;
+            detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+          } else {
+            const formulaRaw = String(weapon?.damage || body.formula || body.damage || "").trim();
+            if (!formulaRaw) {
+              sendJson(res, 400, { error: "У оружия нет формулы урона" });
+              return;
+            }
+            parseDiceFormula(formulaRaw); // validate
+            const rolled = rollDiceFormula(formulaRaw);
+            label = `Урон · ${weaponName}`;
+            bonus = rolled.bonus;
+            total = rolled.total;
+            detail = `${formulaRaw} → ${rolled.detail}`;
+            rolls = rolled.parts;
+            die = rolled.formula?.dice?.[0]?.sides || 0;
+            roll = total;
+          }
         }
-        label = ABILITY_LABELS_RU[abilityKey];
-        bonus = character ? characterAbilityMod(character, abilityKey) : npcAbilityMod(npc, abilityKey);
-      } else {
-        const skillKey = body.skillKey || body.skill || body.label;
-        if (!skillKey) {
-          sendJson(res, 400, { error: "Укажите skillKey" });
-          return;
-        }
-        const resolved = character
-          ? characterSkillBonus(character, skillKey)
-          : npcSkillBonus(npc, skillKey, body.ability);
-        bonus = resolved.bonus;
-        label = resolved.label;
-        abilityKey = resolved.ability;
+      } catch (error) {
+        sendJson(res, 400, { error: String(error.message || error) });
+        return;
       }
 
-      const roll = rollD20();
-      const total = roll + bonus;
-      const detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
       const log = {
         id: randomId("combat"),
         type: "roll",
@@ -2391,11 +2483,13 @@ async function requestHandler(req, res) {
         kind,
         ability: abilityKey,
         label,
-        die: 20,
+        weaponName,
+        die,
         roll,
         bonus,
         total,
         detail,
+        rolls,
         createdAt: new Date().toISOString()
       };
       appendCombatLog(game, log);

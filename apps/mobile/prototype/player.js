@@ -1,4 +1,4 @@
-import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=18";
+import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=19";
 import { renderInitiativeBar } from "/initiative-bar.js?v=3";
 import { openNpcSheetModal } from "/npc-sheet.js?v=3";
 
@@ -537,7 +537,7 @@ async function requestCombatRoll(payload) {
 
 function wirePlayerSheetRolls(root) {
   bindSheetRolls(root, {
-    onRoll: ({ kind, ability, skillKey, label }) => {
+    onRoll: ({ kind, ability, skillKey, label, weaponIndex, weaponName, damage, proficient }) => {
       if (!state.character?.id) {
         showRollToast("Сначала привяжите персонажа");
         return;
@@ -547,6 +547,10 @@ function wirePlayerSheetRolls(root) {
         ability,
         skillKey,
         label,
+        weaponIndex,
+        weaponName,
+        formula: damage,
+        proficient,
         characterId: state.character.id
       }).catch((error) => showRollToast(String(error.message || error)));
     }
@@ -2178,6 +2182,14 @@ ui.characterFileInput?.addEventListener("change", onCharacterFilePicked);
 ui.bindSelectedBtn.addEventListener("click", bindSelected);
 ui.levelUpModalClose?.addEventListener("click", closePlayerLevelUp);
 ui.rollInitiativeBtn?.addEventListener("click", () => rollMyInitiative().catch(console.error));
+
+document.getElementById("playerMapDice")?.addEventListener("click", (e) => {
+  const btn = e.target.closest?.("[data-map-die]");
+  if (!btn) return;
+  const die = Number(btn.dataset.mapDie);
+  if (!die) return;
+  requestCombatRoll({ kind: "dice", die }).catch((error) => showRollToast(String(error.message || error)));
+});
 
 ui.mapInspectOpenBtn?.addEventListener("click", () => openMapInspect());
 ui.playerMapWrap?.addEventListener("click", () => openMapInspect());

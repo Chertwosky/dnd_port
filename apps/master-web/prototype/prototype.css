@@ -1369,6 +1369,77 @@ button.npc-check {
   overflow: hidden;
 }
 
+.hs-weapon-card {
+  align-items: flex-start;
+}
+
+.hs-weapon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.hs-weapon-btn {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid #4a6280;
+  background: #1c2940;
+  color: #d7e0ef;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hs-weapon-btn:hover:not(:disabled) {
+  border-color: #6a8ab0;
+  background: #243652;
+}
+
+.hs-weapon-btn-dmg {
+  border-color: rgba(201, 162, 74, 0.55);
+  background: linear-gradient(180deg, #2e281c, #221c14);
+  color: #f3e6c4;
+}
+
+.hs-weapon-btn-dmg:hover:not(:disabled) {
+  border-color: #c9a24a;
+  background: linear-gradient(180deg, #3a3220, #2a2418);
+}
+
+.hs-weapon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.map-dice-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  margin: 0 0 8px;
+  border-radius: 12px;
+  border: 1px solid #3a4f6d;
+  background:
+    linear-gradient(120deg, rgba(75, 137, 255, 0.08), transparent 55%),
+    rgba(18, 24, 34, 0.85);
+}
+
+.map-dice-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #9eb0c8;
+  margin-right: 4px;
+}
+
+.map-dice-strip .chat-die-btn {
+  flex: 0 0 auto;
+  min-width: 40px;
+}
+
 .hs-item-soft {
   background: #171f2c;
   border-color: #2a3a50;

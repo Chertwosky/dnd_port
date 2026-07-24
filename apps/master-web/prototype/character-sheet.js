@@ -480,16 +480,22 @@ export function buildCharacterSheetParts(c) {
   };
 
   const weaponsHtml = (c.weapons || [])
-    .map(
-      (w) => `
-      <div class="hs-item">
+    .map((w, idx) => {
+      const dmg = String(w.damage || "").trim();
+      const canDmg = Boolean(dmg);
+      return `
+      <div class="hs-item hs-weapon-card">
         <div class="hs-item-ico">${weaponIcon(w.name)}</div>
         <div class="hs-item-body">
           <div class="hs-item-name">${escapeHtml(w.name)}</div>
-          <div class="hs-item-meta">${escapeHtml(w.damage || "—")}${w.proficient ? " · владение" : ""}</div>
+          <div class="hs-item-meta">${escapeHtml(dmg || "—")}${w.proficient ? " · владение" : ""}</div>
+          <div class="hs-weapon-actions">
+            <button type="button" class="hs-weapon-btn hs-rollable" title="Бросок атаки" data-roll="attack" data-weapon-index="${idx}" data-weapon-name="${escapeAttr(w.name)}" data-ability="${escapeAttr(String(w.ability || "str").toLowerCase())}" data-proficient="${w.proficient ? "1" : "0"}" data-roll-label="${escapeAttr(`Атака · ${w.name}`)}">Атака</button>
+            <button type="button" class="hs-weapon-btn hs-weapon-btn-dmg hs-rollable" title="${canDmg ? `Урон: ${escapeAttr(dmg)}` : "Нет формулы урона"}" data-roll="damage" data-weapon-index="${idx}" data-weapon-name="${escapeAttr(w.name)}" data-damage="${escapeAttr(dmg)}" data-roll-label="${escapeAttr(`Урон · ${w.name}`)}" ${canDmg ? "" : "disabled"}>Урон</button>
+          </div>
         </div>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
 
   const equipmentHtml = (c.equipment || [])
@@ -851,9 +857,9 @@ export function buildCharacterSheetHtml(c, opts = {}) {
 }
 
 /**
- * Делегирование кликов по характеристикам/навыкам листа.
+ * Делегирование кликов по характеристикам/навыкам/оружию листа.
  * @param {ParentNode|null} root
- * @param {{ onRoll?: (payload: { kind: string, ability?: string, skillKey?: string, label?: string, el: Element }) => void }} [opts]
+ * @param {{ onRoll?: (payload: object) => void }} [opts]
  */
 export function bindSheetRolls(root, opts = {}) {
   if (!root || typeof opts.onRoll !== "function") return;
@@ -863,13 +869,18 @@ export function bindSheetRolls(root, opts = {}) {
     el.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (el.disabled) return;
       const kind = el.getAttribute("data-roll");
-      if (kind !== "ability" && kind !== "skill") return;
+      if (!kind) return;
       opts.onRoll({
         kind,
         ability: el.getAttribute("data-ability") || undefined,
         skillKey: el.getAttribute("data-skill-key") || undefined,
         label: el.getAttribute("data-roll-label") || undefined,
+        weaponIndex: el.getAttribute("data-weapon-index") != null ? Number(el.getAttribute("data-weapon-index")) : undefined,
+        weaponName: el.getAttribute("data-weapon-name") || undefined,
+        damage: el.getAttribute("data-damage") || undefined,
+        proficient: el.getAttribute("data-proficient") === "1",
         el
       });
     });

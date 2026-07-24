@@ -1,6 +1,6 @@
 import { renderInitiativeBar } from "/initiative-bar.js?v=3";
 import { openNpcSheetModal, closeNpcSheetModal, buildNpcSheetHtml } from "/npc-sheet.js?v=3";
-import { skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=18";
+import { skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=19";
 
 const SESSION_KEY = "dnd_master_session";
 
@@ -1260,16 +1260,22 @@ async function openHeroCard(characterId) {
   };
 
   const weaponsHtml = (c.weapons || [])
-    .map(
-      (w) => `
-      <div class="hs-item">
+    .map((w, idx) => {
+      const dmg = String(w.damage || "").trim();
+      const canDmg = Boolean(dmg);
+      return `
+      <div class="hs-item hs-weapon-card">
         <div class="hs-item-ico">${weaponIcon(w.name)}</div>
         <div class="hs-item-body">
           <div class="hs-item-name">${escapeHtml(w.name)}</div>
-          <div class="hs-item-meta">${escapeHtml(w.damage || "—")}${w.proficient ? " · владение" : ""}</div>
+          <div class="hs-item-meta">${escapeHtml(dmg || "—")}${w.proficient ? " · владение" : ""}</div>
+          <div class="hs-weapon-actions">
+            <button type="button" class="hs-weapon-btn hs-rollable" title="Бросок атаки" data-roll="attack" data-weapon-index="${idx}" data-weapon-name="${escapeAttr(w.name)}" data-ability="${escapeAttr(String(w.ability || "str").toLowerCase())}" data-proficient="${w.proficient ? "1" : "0"}" data-roll-label="${escapeAttr(`Атака · ${w.name}`)}">Атака</button>
+            <button type="button" class="hs-weapon-btn hs-weapon-btn-dmg hs-rollable" title="${canDmg ? `Урон: ${escapeAttr(dmg)}` : "Нет формулы урона"}" data-roll="damage" data-weapon-index="${idx}" data-weapon-name="${escapeAttr(w.name)}" data-damage="${escapeAttr(dmg)}" data-roll-label="${escapeAttr(`Урон · ${w.name}`)}" ${canDmg ? "" : "disabled"}>Урон</button>
+          </div>
         </div>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
 
   const equipmentHtml = (c.equipment || [])
@@ -1485,12 +1491,16 @@ async function openHeroCard(characterId) {
   document.getElementById("closeHeroCardBtn")?.addEventListener("click", closeHeroCard);
   await renderHeroXpBar(c, { allowGrantXp: true });
   bindSheetRolls(ui.heroModalBody, {
-    onRoll: ({ kind, ability, skillKey, label }) => {
+    onRoll: ({ kind, ability, skillKey, label, weaponIndex, weaponName, damage, proficient }) => {
       requestMasterRoll({
         kind,
         ability,
         skillKey,
         label,
+        weaponIndex,
+        weaponName,
+        formula: damage,
+        proficient,
         characterId: c.id
       }).catch((error) => showMasterRollToast(String(error.message || error)));
     }
@@ -3437,12 +3447,16 @@ function renderQuickRollPanel() {
   `;
 
   bindSheetRolls(ui.quickRollPanel, {
-    onRoll: ({ kind, ability, skillKey, label }) => {
+    onRoll: ({ kind, ability, skillKey, label, weaponIndex, weaponName, damage, proficient }) => {
       const payload = {
         kind,
         ability,
         skillKey,
         label,
+        weaponIndex,
+        weaponName,
+        formula: damage,
+        proficient,
         characterId: t.characterId || undefined,
         npcId: t.npcId || undefined,
         tokenId: t.tokenId || undefined,
@@ -4436,6 +4450,13 @@ ui.autoInitBtn?.addEventListener("click", () => autoRollNpcs().catch(console.err
 ui.nextTurnBtn?.addEventListener("click", () => nextTurn().catch(console.error));
 ui.endCombatBtn?.addEventListener("click", () => endCombatEncounter().catch(console.error));
 ui.forceEndCombatBtn?.addEventListener("click", () => endCombatEncounter().catch(console.error));
+document.getElementById("masterMapDice")?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-map-die]");
+  if (!btn) return;
+  const die = Number(btn.dataset.mapDie);
+  if (!die) return;
+  requestMasterRoll({ kind: "dice", die }).catch((error) => showMasterRollToast(String(error.message || error)));
+});
 ui.lootRandomBtn?.addEventListener("click", rollRandomLoot);
 ui.lootPreloadBtn?.addEventListener("click", preloadLootCatalog);
 ui.lootAddDropBtn?.addEventListener("click", () => addCustomLoot("drops"));
