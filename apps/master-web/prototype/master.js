@@ -1,6 +1,6 @@
 import { renderInitiativeBar } from "/initiative-bar.js?v=3";
 import { openNpcSheetModal, closeNpcSheetModal, buildNpcSheetHtml } from "/npc-sheet.js?v=3";
-import { skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=19";
+import { skillLabelRu, bindSheetRolls, bindSheetSpellSlots } from "/character-sheet.js?v=21";
 
 const SESSION_KEY = "dnd_master_session";
 
@@ -53,6 +53,7 @@ const ui = {
   combatLog: document.getElementById("combatLog"),
   quickRollPanel: document.getElementById("quickRollPanel"),
   rollToast: document.getElementById("rollToast"),
+  masterRollMode: document.getElementById("masterRollMode"),
   tokenName: document.getElementById("tokenName"),
   tokenType: document.getElementById("tokenType"),
   tokenX: document.getElementById("tokenX"),
@@ -251,6 +252,7 @@ const state = {
   members: [],
   combat: null,
   rollTarget: null,
+  rollMode: "normal",
   rightTab: "combat",
   privateChat: { threads: [], dice: [4, 6, 8, 10, 12, 20] },
   chatPlayerId: null,
@@ -1373,6 +1375,36 @@ async function openHeroCard(characterId) {
     </section>`;
   };
 
+  const slotsMap = c.spellcasting?.slots && typeof c.spellcasting.slots === "object" ? c.spellcasting.slots : null;
+  const slotLevels = slotsMap
+    ? Object.keys(slotsMap)
+        .map(Number)
+        .filter((n) => Number.isFinite(n) && slotsMap[n]?.max > 0)
+        .sort((a, b) => a - b)
+    : [];
+  const slotsHtml = slotLevels.length
+    ? `<div class="hs-slots" data-character-id="${escapeAttr(c.id || "")}">
+        <div class="hs-subtitle">Ячейки заклинаний</div>
+        ${slotLevels
+          .map((level) => {
+            const max = Number(slotsMap[level].max) || 0;
+            const used = Number(slotsMap[level].used) || 0;
+            const pips = Array.from({ length: max }, (_, i) => {
+              const isUsed = i < used;
+              return `<button type="button" class="hs-slot-pip${isUsed ? " used" : ""}" data-slot-level="${level}" data-slot-action="${
+                isUsed ? "restore" : "spend"
+              }" title="${isUsed ? "Вернуть" : "Потратить"} · ${level} круг"></button>`;
+            }).join("");
+            return `<div class="hs-slot-row"><span class="hs-slot-label">${level} круг</span><div class="hs-slot-pips">${pips}</div><span class="muted mono">${used}/${max}</span></div>`;
+          })
+          .join("")}
+        <div class="hs-rest-row">
+          <button type="button" data-rest="short">Короткий отдых</button>
+          <button type="button" class="primary" data-rest="long">Долгий отдых</button>
+        </div>
+      </div>`
+    : "";
+
   ui.heroModalBody.innerHTML = `
     <div class="hs-top">
       <div class="hs-top-main">
@@ -1448,16 +1480,19 @@ async function openHeroCard(characterId) {
         : ""
     }
     ${
-      c.preparedSpells?.length
+      c.preparedSpells?.length || slotsHtml
         ? `<section class="hs-section">
             ${sectionTitle("🔮", "Заклинания")}
             <div class="hs-vitals hs-vitals-compact">
               <div class="hs-vital" title="Сложность спасброска от ваших заклинаний"><span class="hs-vital-ico">📜</span><div class="hs-vital-text"><div class="hs-vital-label">Спасбросок</div><div class="hs-vital-val">${c.spellcasting?.saveDC ?? "—"}</div></div></div>
               <div class="hs-vital" title="Бонус атаки заклинанием"><span class="hs-vital-ico">🎯</span><div class="hs-vital-text"><div class="hs-vital-label">Атака</div><div class="hs-vital-val">+${c.spellcasting?.attackBonus ?? "—"}</div></div></div>
-              <div class="hs-vital" title="Ячейки заклинаний 1 круга"><span class="hs-vital-ico">🔷</span><div class="hs-vital-text"><div class="hs-vital-label">Ячейки 1</div><div class="hs-vital-val">${c.spellcasting?.slots1 ?? 0}</div></div></div>
             </div>
-            <div class="hs-subtitle">Подготовленные</div>
-            <div class="hs-spell-list">${spellChips}</div>
+            ${slotsHtml}
+            ${
+              c.preparedSpells?.length
+                ? `<div class="hs-subtitle">Подготовленные</div><div class="hs-spell-list">${spellChips}</div>`
+                : ""
+            }
           </section>`
         : ""
     }
@@ -1503,6 +1538,37 @@ async function openHeroCard(characterId) {
         proficient,
         characterId: c.id
       }).catch((error) => showMasterRollToast(String(error.message || error)));
+    }
+  });
+  bindSheetSpellSlots(ui.heroModalBody, {
+    characterId: c.id,
+    onSlot: async ({ level, action }) => {
+      try {
+        await call("/characters/spell-slots", {
+          method: "POST",
+          body: JSON.stringify({ characterId: c.id, level, action })
+        });
+        openHeroCard(c.id);
+      } catch (error) {
+        alert(String(error.message || error));
+      }
+    },
+    onRest: async ({ type }) => {
+      if (type === "long" && !window.confirm("Долгий отдых: полные ХП и все ячейки?")) return;
+      try {
+        const data = await call("/characters/rest", {
+          method: "POST",
+          body: JSON.stringify({ characterId: c.id, type })
+        });
+        if (Array.isArray(data.combatLog)) {
+          state.log = data.combatLog;
+          renderLog();
+        }
+        await syncVision();
+        openHeroCard(c.id);
+      } catch (error) {
+        alert(String(error.message || error));
+      }
     }
   });
   ui.heroModalBody.querySelectorAll("[data-hp]").forEach((btn) => {
@@ -3315,9 +3381,13 @@ function showMasterRollToast(text) {
 }
 
 async function requestMasterRoll(payload) {
+  const body = { ...payload };
+  if (body.kind === "ability" || body.kind === "skill" || body.kind === "attack") {
+    body.mode = body.mode || state.rollMode || "normal";
+  }
   const data = await call("/combat/roll", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   });
   if (Array.isArray(data.combatLog)) state.log = data.combatLog;
   if (data.combat) {
@@ -3330,6 +3400,12 @@ async function requestMasterRoll(payload) {
     showMasterRollToast(`${log.actorName || ""} · ${log.label || ""}: ${log.detail}`.trim());
   }
   return data;
+}
+
+function syncMasterRollModeUi() {
+  ui.masterRollMode?.querySelectorAll("[data-roll-mode]").forEach((btn) => {
+    btn.classList.toggle("primary", btn.dataset.rollMode === state.rollMode);
+  });
 }
 
 function setRollTargetFromCombatant(combatant) {
@@ -4457,6 +4533,13 @@ ui.autoInitBtn?.addEventListener("click", () => autoRollNpcs().catch(console.err
 ui.nextTurnBtn?.addEventListener("click", () => nextTurn().catch(console.error));
 ui.endCombatBtn?.addEventListener("click", () => endCombatEncounter().catch(console.error));
 ui.forceEndCombatBtn?.addEventListener("click", () => endCombatEncounter().catch(console.error));
+ui.masterRollMode?.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-roll-mode]");
+  if (!btn) return;
+  state.rollMode = btn.dataset.rollMode || "normal";
+  syncMasterRollModeUi();
+});
+syncMasterRollModeUi();
 document.getElementById("masterMapDice")?.addEventListener("click", (e) => {
   const btn = e.target.closest("[data-map-die]");
   if (!btn) return;

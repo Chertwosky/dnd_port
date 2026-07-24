@@ -1505,6 +1505,125 @@ button.npc-check {
   font-size: 11px;
 }
 
+.player-vitals-row {
+  align-items: stretch;
+}
+
+.player-hp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 120px;
+}
+
+.player-hp-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.player-hp-btns button {
+  flex: 1 1 36px;
+  min-height: 30px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.roll-mode-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.roll-mode-btn {
+  flex: 1 1 auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 10px;
+}
+
+.player-move-hint {
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+
+.player-move-hint.active {
+  color: #f3e6c4;
+  font-weight: 600;
+}
+
+.token.mine {
+  outline: 2px solid #c9a24a;
+  box-shadow: 0 0 0 2px rgba(201, 162, 74, 0.25);
+  cursor: pointer;
+}
+
+.token.mine.selected {
+  outline-color: #41c488;
+  box-shadow: 0 0 0 3px rgba(65, 196, 136, 0.35);
+}
+
+.cell.move-target.visible {
+  cursor: crosshair;
+}
+
+.hs-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.hs-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hs-slot-label {
+  min-width: 64px;
+  font-size: 12px;
+  color: #9eb0c8;
+  font-weight: 600;
+}
+
+.hs-slot-pips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.hs-slot-pip {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid #4b89ff;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.hs-slot-pip.used {
+  background: #4b89ff;
+  box-shadow: inset 0 0 0 2px #152030;
+}
+
+.hs-slot-pip:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.hs-rest-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .hs-item-soft {
   background: #171f2c;
   border-color: #2a3a50;

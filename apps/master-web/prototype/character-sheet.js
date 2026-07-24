@@ -595,16 +595,50 @@ export function buildCharacterSheetParts(c) {
           : ""
       }`;
 
+  const slotsMap = c.spellcasting?.slots && typeof c.spellcasting.slots === "object" ? c.spellcasting.slots : null;
+  const slotsHtml = (() => {
+    if (!slotsMap) return "";
+    const levels = Object.keys(slotsMap)
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && slotsMap[n]?.max > 0)
+      .sort((a, b) => a - b);
+    if (!levels.length) return "";
+    const rows = levels
+      .map((level) => {
+        const max = Number(slotsMap[level].max) || 0;
+        const used = Number(slotsMap[level].used) || 0;
+        const pips = Array.from({ length: max }, (_, i) => {
+          const isUsed = i < used;
+          return `<button type="button" class="hs-slot-pip${isUsed ? " used" : ""}" data-slot-level="${level}" data-slot-action="${
+            isUsed ? "restore" : "spend"
+          }" title="${isUsed ? "Вернуть ячейку" : "Потратить ячейку"} · ${level} круг"></button>`;
+        }).join("");
+        return `<div class="hs-slot-row"><span class="hs-slot-label">${level} круг</span><div class="hs-slot-pips">${pips}</div><span class="muted mono">${used}/${max}</span></div>`;
+      })
+      .join("");
+    return `<div class="hs-slots" data-character-id="${escapeAttr(c.id || "")}">
+      <div class="hs-subtitle">Ячейки заклинаний</div>
+      ${rows}
+      <div class="hs-rest-row">
+        <button type="button" data-rest="short">Короткий отдых</button>
+        <button type="button" class="primary" data-rest="long">Долгий отдых</button>
+      </div>
+    </div>`;
+  })();
+
   const spellsBody =
-    c.preparedSpells?.length || c.alwaysPreparedSpells?.length || c.preparedSpellsDetailed?.length
+    c.preparedSpells?.length || c.alwaysPreparedSpells?.length || c.preparedSpellsDetailed?.length || slotsHtml
       ? `${importWarnHtml}
             <div class="hs-vitals hs-vitals-compact">
               <div class="hs-vital" title="Сложность спасброска от ваших заклинаний"><span class="hs-vital-ico">📜</span><div class="hs-vital-text"><div class="hs-vital-label">Спасбросок</div><div class="hs-vital-val">${c.spellcasting?.saveDC ?? "—"}</div></div></div>
               <div class="hs-vital" title="Бонус атаки заклинанием"><span class="hs-vital-ico">🎯</span><div class="hs-vital-text"><div class="hs-vital-label">Атака</div><div class="hs-vital-val">+${c.spellcasting?.attackBonus ?? "—"}</div></div></div>
-              <div class="hs-vital" title="Ячейки заклинаний 1 круга"><span class="hs-vital-ico">🔷</span><div class="hs-vital-text"><div class="hs-vital-label">Ячейки 1</div><div class="hs-vital-val">${c.spellcasting?.slots1 ?? 0}</div></div></div>
             </div>
-            <div class="hs-subtitle">Подготовленные и всегда готовые</div>
-            <div class="hs-spell-list">${spellChips}</div>`
+            ${slotsHtml}
+            ${
+              c.preparedSpells?.length || c.alwaysPreparedSpells?.length || c.preparedSpellsDetailed?.length
+                ? `<div class="hs-subtitle">Подготовленные и всегда готовые</div><div class="hs-spell-list">${spellChips}</div>`
+                : `<div class="muted">Нет списка подготовленных заклинаний</div>`
+            }`
       : `${importWarnHtml}<div class="muted">Нет заклинаний</div>`;
 
   const spellItems = Array.isArray(c.spellcastingItems) ? c.spellcastingItems : [];
@@ -881,6 +915,48 @@ export function bindSheetRolls(root, opts = {}) {
         weaponName: el.getAttribute("data-weapon-name") || undefined,
         damage: el.getAttribute("data-damage") || undefined,
         proficient: el.getAttribute("data-proficient") === "1",
+        el
+      });
+    });
+  });
+}
+
+/**
+ * Ячейки и отдых на вкладке заклинаний.
+ * @param {ParentNode|null} root
+ * @param {{ characterId?: string, onSlot?: Function, onRest?: Function }} [opts]
+ */
+export function bindSheetSpellSlots(root, opts = {}) {
+  if (!root) return;
+  const characterId =
+    opts.characterId || root.querySelector?.("[data-character-id]")?.getAttribute("data-character-id") || null;
+
+  root.querySelectorAll("[data-slot-level]").forEach((el) => {
+    if (el.dataset.slotBound === "1") return;
+    el.dataset.slotBound = "1";
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof opts.onSlot !== "function") return;
+      opts.onSlot({
+        characterId,
+        level: Number(el.getAttribute("data-slot-level")),
+        action: el.getAttribute("data-slot-action") || "spend",
+        el
+      });
+    });
+  });
+
+  root.querySelectorAll("[data-rest]").forEach((el) => {
+    if (el.dataset.restBound === "1") return;
+    el.dataset.restBound = "1";
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (typeof opts.onRest !== "function") return;
+      opts.onRest({
+        characterId,
+        type: el.getAttribute("data-rest") || "short",
         el
       });
     });

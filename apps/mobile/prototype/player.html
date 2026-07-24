@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Игрок — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps30" />
+    <link rel="stylesheet" href="/app.css?v=maps33" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -90,8 +90,16 @@
       </section>
 
       <section id="screenCombat" class="screen stack">
-        <div class="row">
-          <div class="card">ХП <span id="combatHp" class="mono">—</span></div>
+        <div class="row player-vitals-row">
+          <div class="card player-hp-card">
+            <div>ХП <span id="combatHp" class="mono">—</span></div>
+            <div class="player-hp-btns" id="playerHpBtns">
+              <button type="button" data-hp-action="-5" title="Урон 5">−5</button>
+              <button type="button" data-hp-action="-1" title="Урон 1">−1</button>
+              <button type="button" data-hp-action="+1" title="Лечение 1">+1</button>
+              <button type="button" data-hp-action="+5" title="Лечение 5">+5</button>
+            </div>
+          </div>
           <div class="card">Класс брони <span id="combatAc" class="mono">—</span></div>
           <div class="card">Роль <span id="combatRole" class="mono">зритель</span></div>
         </div>
@@ -114,6 +122,11 @@
         <div id="playerInitiativeBar" class="init-bar hidden" aria-live="polite"></div>
 
         <div class="player-combat-tools stack" id="playerCombatTools">
+          <div class="roll-mode-strip" id="playerRollMode" aria-label="Режим броска">
+            <button type="button" data-roll-mode="normal" class="roll-mode-btn primary">Обычный</button>
+            <button type="button" data-roll-mode="advantage" class="roll-mode-btn">Преим.</button>
+            <button type="button" data-roll-mode="disadvantage" class="roll-mode-btn">Помеха</button>
+          </div>
           <div id="playerWeaponStrip" class="player-weapon-strip" aria-label="Оружие"></div>
           <div class="map-dice-strip" id="playerMapDice" aria-label="Кубики">
             <span class="map-dice-label">Кубики</span>
@@ -125,6 +138,8 @@
             <button type="button" class="chat-die-btn" data-map-die="20">d20</button>
           </div>
         </div>
+
+        <div id="playerMoveHint" class="muted player-move-hint">Тапни свой токен, затем клетку</div>
 
         <div class="player-map-toolbar">
           <div id="playerMapTabs" class="map-tabs player-map-tabs"></div>
@@ -185,6 +200,6 @@
       <div class="modal-card stack npc-sheet-card" id="npcSheetModalBody"></div>
     </div>
 
-    <script type="module" src="/player.js?v=38"></script>
+    <script type="module" src="/player.js?v=40"></script>
   </body>
 </html>

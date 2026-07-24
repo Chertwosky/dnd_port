@@ -404,6 +404,25 @@ function rollD20() {
   return 1 + Math.floor(Math.random() * 20);
 }
 
+/** @param {"normal"|"advantage"|"disadvantage"} mode */
+function rollD20WithMode(mode = "normal") {
+  const m = mode === "advantage" || mode === "disadvantage" ? mode : "normal";
+  if (m === "normal") {
+    const roll = rollD20();
+    return { mode: "normal", rolls: [roll], roll, detailPrefix: `d20(${roll})` };
+  }
+  const a = rollD20();
+  const b = rollD20();
+  const roll = m === "advantage" ? Math.max(a, b) : Math.min(a, b);
+  const tag = m === "advantage" ? "преим." : "помеха";
+  return {
+    mode: m,
+    rolls: [a, b],
+    roll,
+    detailPrefix: `${tag} ${a}/${b} → ${roll}`
+  };
+}
+
 function fmtSigned(n) {
   const v = Number(n) || 0;
   return v >= 0 ? `+${v}` : `${v}`;
@@ -555,12 +574,43 @@ function computeSpellcasting(parsed, abilities, proficiencyBonus) {
   const pb = Number(proficiencyBonus) || 2;
   const saveFromSheet = Number(parsed.spellsInfo?.save?.customModifier || parsed.spellsInfo?.save?.value || 0);
   const attackFromSheet = Number(parsed.spellsInfo?.mod?.customModifier || parsed.spellsInfo?.mod?.value || 0);
+  const slots = {};
+  for (let level = 1; level <= 9; level += 1) {
+    const max = Number(parsed.spells?.[`slots-${level}`]?.value ?? 0);
+    if (max > 0) {
+      slots[level] = { max, used: 0 };
+    }
+  }
   return {
     ability: abilityKey,
     saveDC: saveFromSheet || 8 + pb + mod,
     attackBonus: attackFromSheet || pb + mod,
-    slots1: Number(parsed.spells?.["slots-1"]?.value ?? 0)
+    slots1: Number(slots[1]?.max ?? 0),
+    slots
   };
+}
+
+function ensureSpellSlots(character) {
+  if (!character.spellcasting || typeof character.spellcasting !== "object") {
+    character.spellcasting = { ability: "wis", saveDC: 10, attackBonus: 2, slots1: 0, slots: {} };
+  }
+  if (!character.spellcasting.slots || typeof character.spellcasting.slots !== "object") {
+    character.spellcasting.slots = {};
+    const legacy = Number(character.spellcasting.slots1 || 0);
+    if (legacy > 0) character.spellcasting.slots[1] = { max: legacy, used: 0 };
+  }
+  for (const [k, v] of Object.entries(character.spellcasting.slots)) {
+    const max = Math.max(0, Number(v?.max) || 0);
+    const used = clamp(Number(v?.used) || 0, 0, max);
+    character.spellcasting.slots[k] = { max, used };
+  }
+  character.spellcasting.slots1 = Number(character.spellcasting.slots[1]?.max ?? 0);
+  return character.spellcasting;
+}
+
+function isWarlockLike(character) {
+  const blob = `${character?.className || ""} ${(character?.classes || []).map((c) => c.name || "").join(" ")}`.toLowerCase();
+  return /warlock|колдун/.test(blob);
 }
 
 function normalizeNote(data) {
@@ -1301,6 +1351,8 @@ async function requestHandler(req, res) {
       "/characters",
       "/characters/bind",
       "/characters/hp",
+      "/characters/spell-slots",
+      "/characters/rest",
       "/characters/level",
       "/characters/xp",
       "/characters/level-up",
@@ -1448,6 +1500,7 @@ async function requestHandler(req, res) {
         ...(character.initiateCantrips || [])
       ];
       const preparedSpellsDetailed = await enrichPreparedSpells(preparedForEnrich);
+      ensureSpellSlots(character);
       sendJson(res, 200, {
         ...character,
         preparedSpellsDetailed,
@@ -1493,8 +1546,8 @@ async function requestHandler(req, res) {
 
     if (req.method === "POST" && parsedUrl.pathname === "/characters/hp") {
       const session = getSession(req);
-      if (session?.role !== "master") {
-        sendJson(res, 403, { error: "Только мастер" });
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
         return;
       }
       const body = await readJson(req);
@@ -1503,6 +1556,14 @@ async function requestHandler(req, res) {
         sendJson(res, 404, { error: "Персонаж не найден" });
         return;
       }
+      if (session.role === "player") {
+        const member = lobby.members.find((m) => m.id === session.userId);
+        if (!member?.characterId || member.characterId !== character.id) {
+          sendJson(res, 403, { error: "Можно менять только свои ХП" });
+          return;
+        }
+      }
+      const before = Number(character.vitals.hpCurrent ?? 0);
       let delta = Number(body.delta ?? 0);
       if (body.action && ["-1", "-5", "+1", "+5"].includes(body.action)) {
         delta = Number(body.action);
@@ -1512,16 +1573,145 @@ async function requestHandler(req, res) {
       } else {
         character.vitals.hpCurrent = clamp(character.vitals.hpCurrent + delta, 0, character.vitals.hpMax);
       }
-      if (body.hpMax != null) {
+      if (body.hpMax != null && session.role === "master") {
         character.vitals.hpMax = Math.max(1, Number(body.hpMax));
         character.vitals.hpCurrent = clamp(character.vitals.hpCurrent, 0, character.vitals.hpMax);
       }
+      const applied = character.vitals.hpCurrent - before;
       const token = game.map.tokens.find((t) => t.characterId === character.id);
       if (token) {
         token.hpCurrent = character.vitals.hpCurrent;
         token.hpMax = character.vitals.hpMax;
       }
-      sendJson(res, 200, { character, token: token || null });
+      if (applied !== 0) {
+        appendCombatLog(game, {
+          id: randomId("combat"),
+          type: "hp",
+          tokenId: token?.id || null,
+          tokenName: character.name,
+          delta: applied,
+          hpCurrent: character.vitals.hpCurrent,
+          hpMax: character.vitals.hpMax,
+          reason: body.reason || (applied < 0 ? "урон" : "лечение"),
+          createdAt: new Date().toISOString()
+        });
+      }
+      sendJson(res, 200, {
+        character,
+        token: token || null,
+        combatLog: publicCombatLog(game)
+      });
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/characters/spell-slots") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
+      const body = await readJson(req);
+      const character = game.characters.find((c) => c.id === body.characterId);
+      if (!character) {
+        sendJson(res, 404, { error: "Персонаж не найден" });
+        return;
+      }
+      if (session.role === "player") {
+        const member = lobby.members.find((m) => m.id === session.userId);
+        if (!member?.characterId || member.characterId !== character.id) {
+          sendJson(res, 403, { error: "Только свои ячейки" });
+          return;
+        }
+      }
+      const casting = ensureSpellSlots(character);
+      const level = Number(body.level);
+      if (!Number.isFinite(level) || level < 1 || level > 9 || !casting.slots[level]) {
+        sendJson(res, 400, { error: "Нет ячеек этого круга" });
+        return;
+      }
+      const slot = casting.slots[level];
+      const action = String(body.action || "spend");
+      if (action === "spend") {
+        if (slot.used >= slot.max) {
+          sendJson(res, 400, { error: "Ячейки этого круга закончились" });
+          return;
+        }
+        slot.used += 1;
+      } else if (action === "restore") {
+        slot.used = Math.max(0, slot.used - 1);
+      } else if (action === "set") {
+        slot.used = clamp(Number(body.used ?? slot.used), 0, slot.max);
+      } else {
+        sendJson(res, 400, { error: "action: spend | restore | set" });
+        return;
+      }
+      sendJson(res, 200, { character, spellcasting: casting });
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/characters/rest") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
+      const body = await readJson(req);
+      const character = game.characters.find((c) => c.id === body.characterId);
+      if (!character) {
+        sendJson(res, 404, { error: "Персонаж не найден" });
+        return;
+      }
+      if (session.role === "player") {
+        const member = lobby.members.find((m) => m.id === session.userId);
+        if (!member?.characterId || member.characterId !== character.id) {
+          sendJson(res, 403, { error: "Только свой отдых" });
+          return;
+        }
+      }
+      const casting = ensureSpellSlots(character);
+      const restType = String(body.type || "short") === "long" ? "long" : "short";
+      if (restType === "long") {
+        for (const slot of Object.values(casting.slots)) {
+          slot.used = 0;
+        }
+        character.vitals.hpCurrent = character.vitals.hpMax;
+        const token = game.map.tokens.find((t) => t.characterId === character.id);
+        if (token) {
+          token.hpCurrent = character.vitals.hpCurrent;
+          token.hpMax = character.vitals.hpMax;
+        }
+      } else if (isWarlockLike(character)) {
+        for (const slot of Object.values(casting.slots)) {
+          slot.used = 0;
+        }
+      }
+      appendCombatLog(game, {
+        id: randomId("combat"),
+        type: "roll",
+        actorName: character.name,
+        actorRole: session.role,
+        rollerName: session.userName,
+        characterId: character.id,
+        kind: "ability",
+        label: restType === "long" ? "Долгий отдых" : "Короткий отдых",
+        die: 0,
+        roll: 0,
+        bonus: 0,
+        total: 0,
+        detail:
+          restType === "long"
+            ? "ХП полные · ячейки восстановлены"
+            : isWarlockLike(character)
+              ? "Ячейки колдуна восстановлены"
+              : "Отдых · ячейки заклинаний без изменений (5e)",
+        createdAt: new Date().toISOString()
+      });
+      sendJson(res, 200, {
+        character,
+        spellcasting: casting,
+        restType,
+        combatLog: publicCombatLog(game)
+      });
       return;
     }
 
@@ -1859,16 +2049,43 @@ async function requestHandler(req, res) {
     }
 
     if (req.method === "PATCH" && /^\/map\/tokens\/[^/]+\/move$/.test(parsedUrl.pathname)) {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
       const tokenId = parsedUrl.pathname.split("/")[3];
       const body = await readJson(req);
-      const token = game.map.tokens.find((item) => item.id === tokenId);
+      let token = null;
+      let hostMap = null;
+      for (const map of game.maps || []) {
+        const found = (map.tokens || []).find((item) => item.id === tokenId);
+        if (found) {
+          token = found;
+          hostMap = map;
+          break;
+        }
+      }
+      if (!token && game.map?.tokens) {
+        token = game.map.tokens.find((item) => item.id === tokenId) || null;
+        hostMap = game.map;
+      }
       if (!token) {
         sendJson(res, 404, { error: "Токен не найден" });
         return;
       }
+      if (session.role === "player") {
+        const member = lobby.members.find((m) => m.id === session.userId);
+        if (!member?.characterId || token.characterId !== member.characterId) {
+          sendJson(res, 403, { error: "Можно двигать только свой токен" });
+          return;
+        }
+      }
+      const width = hostMap?.width ?? game.map.width;
+      const height = hostMap?.height ?? game.map.height;
       token.position = {
-        x: clamp(Number(body.position?.x ?? token.position.x), 0, game.map.width - 1),
-        y: clamp(Number(body.position?.y ?? token.position.y), 0, game.map.height - 1)
+        x: clamp(Number(body.position?.x ?? token.position.x), 0, width - 1),
+        y: clamp(Number(body.position?.y ?? token.position.y), 0, height - 1)
       };
       sendJson(res, 200, token);
       return;
@@ -2415,6 +2632,10 @@ async function requestHandler(req, res) {
       let detail = "";
       let rolls = null;
       let weaponName = null;
+      let rollMode = "normal";
+      const requestedMode = String(body.mode || "normal").toLowerCase();
+      const d20Mode =
+        requestedMode === "advantage" || requestedMode === "disadvantage" ? requestedMode : "normal";
 
       try {
         if (kind === "dice") {
@@ -2448,9 +2669,12 @@ async function requestHandler(req, res) {
           }
           label = ABILITY_LABELS_RU[abilityKey];
           bonus = character ? characterAbilityMod(character, abilityKey) : npcAbilityMod(npc, abilityKey);
-          roll = rollD20();
+          const d20 = rollD20WithMode(d20Mode);
+          rollMode = d20.mode;
+          rolls = d20.rolls;
+          roll = d20.roll;
           total = roll + bonus;
-          detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+          detail = `${d20.detailPrefix} ${fmtSigned(bonus)} = ${total}`;
         } else if (kind === "skill") {
           const skillKey = body.skillKey || body.skill || body.label;
           if (!skillKey) {
@@ -2463,9 +2687,12 @@ async function requestHandler(req, res) {
           bonus = resolved.bonus;
           label = resolved.label;
           abilityKey = resolved.ability;
-          roll = rollD20();
+          const d20 = rollD20WithMode(d20Mode);
+          rollMode = d20.mode;
+          rolls = d20.rolls;
+          roll = d20.roll;
           total = roll + bonus;
-          detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+          detail = `${d20.detailPrefix} ${fmtSigned(bonus)} = ${total}`;
         } else if (kind === "attack" || kind === "damage") {
           let weapon = null;
           const weapons = character?.weapons || npc?.weapons || [];
@@ -2496,9 +2723,12 @@ async function requestHandler(req, res) {
               bonus = mod + (proficient ? pb : 0);
             }
             label = `Атака · ${weaponName}`;
-            roll = rollD20();
+            const d20 = rollD20WithMode(d20Mode);
+            rollMode = d20.mode;
+            rolls = d20.rolls;
+            roll = d20.roll;
             total = roll + bonus;
-            detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+            detail = `${d20.detailPrefix} ${fmtSigned(bonus)} = ${total}`;
           } else {
             const formulaRaw = String(weapon?.damage || body.formula || body.damage || "").trim();
             if (!formulaRaw) {
@@ -2534,6 +2764,7 @@ async function requestHandler(req, res) {
         ability: abilityKey,
         label,
         weaponName,
+        mode: rollMode,
         die,
         roll,
         bonus,

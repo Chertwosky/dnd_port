@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps31" />
+    <link rel="stylesheet" href="/app.css?v=maps33" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -206,6 +206,11 @@
             </div>
             <div id="combatStatus" class="muted">Бой не начат</div>
             <div id="rollToast" class="roll-toast hidden" aria-live="polite"></div>
+            <div class="roll-mode-strip" id="masterRollMode" aria-label="Режим броска">
+              <button type="button" data-roll-mode="normal" class="roll-mode-btn primary">Обычный</button>
+              <button type="button" data-roll-mode="advantage" class="roll-mode-btn">Преим.</button>
+              <button type="button" data-roll-mode="disadvantage" class="roll-mode-btn">Помеха</button>
+            </div>
             <div id="quickRollPanel" class="card stack quick-roll-panel">
               <div class="muted">Быстрые броски появятся здесь</div>
             </div>
@@ -346,6 +351,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps31"></script>
+    <script type="module" src="/master.js?v=maps33"></script>
   </body>
 </html>

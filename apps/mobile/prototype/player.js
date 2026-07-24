@@ -1,4 +1,4 @@
-import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=19";
+import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu, bindSheetRolls, bindSheetSpellSlots } from "/character-sheet.js?v=21";
 import { renderInitiativeBar } from "/initiative-bar.js?v=3";
 import { openNpcSheetModal } from "/npc-sheet.js?v=3";
 
@@ -74,9 +74,14 @@ const ui = {
   combatAc: document.getElementById("combatAc"),
   combatAbilities: document.getElementById("combatAbilities"),
   combatRole: document.getElementById("combatRole"),
+  playerHpBtns: document.getElementById("playerHpBtns"),
+  playerRollMode: document.getElementById("playerRollMode"),
+  playerMoveHint: document.getElementById("playerMoveHint"),
   playerMapGrid: document.getElementById("playerMapGrid"),
   playerMapWrap: document.getElementById("playerMapWrap"),
   playerMapTabs: document.getElementById("playerMapTabs"),
+  playerWeaponStrip: document.getElementById("playerWeaponStrip"),
+  playerMapDice: document.getElementById("playerMapDice"),
   mapInspectOpenBtn: document.getElementById("mapInspectOpenBtn"),
   mapInspectOverlay: document.getElementById("mapInspectOverlay"),
   mapInspectCloseBtn: document.getElementById("mapInspectCloseBtn"),
@@ -92,8 +97,6 @@ const ui = {
   rollInitiativeBtn: document.getElementById("rollInitiativeBtn"),
   initiativeRollResult: document.getElementById("initiativeRollResult"),
   playerInitiativeBar: document.getElementById("playerInitiativeBar"),
-  playerWeaponStrip: document.getElementById("playerWeaponStrip"),
-  playerMapDice: document.getElementById("playerMapDice"),
   npcSheetModal: document.getElementById("npcSheetModal"),
   npcSheetModalBody: document.getElementById("npcSheetModalBody"),
   tabBody: document.getElementById("tabBody"),
@@ -114,6 +117,8 @@ const state = {
   mapVision: null,
   activeTab: "combat",
   inventory: [],
+  rollMode: "normal",
+  selectedTokenId: null,
   privateChat: { thread: null, dice: [4, 6, 8, 10, 12, 20] },
   chatSeenId: "",
   mapFitCols: 0,
@@ -577,9 +582,13 @@ function renderPlayerCombatLog() {
 }
 
 async function requestCombatRoll(payload) {
+  const body = { ...payload };
+  if (body.kind === "ability" || body.kind === "skill" || body.kind === "attack") {
+    body.mode = body.mode || state.rollMode || "normal";
+  }
   const data = await call("/combat/roll", {
     method: "POST",
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   });
   if (Array.isArray(data.combatLog)) {
     state.mapVision = state.mapVision || {};
@@ -616,6 +625,54 @@ function wirePlayerSheetRolls(root) {
         proficient,
         characterId: state.character.id
       }).catch((error) => showRollToast(String(error.message || error)));
+    }
+  });
+  wirePlayerSpellSlots(root);
+}
+
+function wirePlayerSpellSlots(root) {
+  bindSheetSpellSlots(root, {
+    characterId: state.character?.id,
+    onSlot: async ({ level, action }) => {
+      if (!state.character?.id) return;
+      try {
+        const data = await call("/characters/spell-slots", {
+          method: "POST",
+          body: JSON.stringify({ characterId: state.character.id, level, action })
+        });
+        if (data.character) {
+          state.character = { ...state.character, ...data.character };
+        } else if (data.spellcasting) {
+          state.character.spellcasting = data.spellcasting;
+        }
+        if (state.activeTab === "spells") renderTab();
+      } catch (error) {
+        showRollToast(String(error.message || error));
+      }
+    },
+    onRest: async ({ type }) => {
+      if (!state.character?.id) return;
+      if (type === "long" && !window.confirm("Долгий отдых: полные ХП и все ячейки?")) return;
+      try {
+        const data = await call("/characters/rest", {
+          method: "POST",
+          body: JSON.stringify({ characterId: state.character.id, type })
+        });
+        if (data.character) {
+          state.character = { ...state.character, ...data.character };
+          renderCombatHeader();
+        }
+        if (Array.isArray(data.combatLog)) {
+          state.mapVision = state.mapVision || {};
+          state.mapVision.combatLog = data.combatLog;
+          renderPlayerCombatLog();
+        }
+        showRollToast(type === "long" ? "Долгий отдых" : "Короткий отдых");
+        if (state.activeTab === "spells") renderTab();
+        await refreshMap();
+      } catch (error) {
+        showRollToast(String(error.message || error));
+      }
     }
   });
 }
@@ -712,6 +769,7 @@ function fillMapGrid(gridEl, width, height) {
   const visible = new Set((state.mapVision?.visibleCells || []).map((c) => `${c.x}:${c.y}`));
   const tiles = state.mapVision?.tiles || {};
   const overlays = state.mapVision?.overlays || {};
+  const myCharId = state.character?.id || null;
   const tokenMap = new Map();
   for (const t of state.mapVision?.tokens || []) {
     tokenMap.set(`${t.position.x}:${t.position.y}`, t);
@@ -729,7 +787,10 @@ function fillMapGrid(gridEl, width, height) {
       const classes = ["cell"];
       if (isVisible) classes.push("visible");
       if (isVisible && tileId) classes.push(`tex-${tileId}`);
+      if (state.selectedTokenId) classes.push("move-target");
       cell.className = classes.join(" ");
+      cell.dataset.x = String(x);
+      cell.dataset.y = String(y);
 
       if (isVisible && tileId && TILE_ICONS[tileId]) {
         const label = document.createElement("span");
@@ -748,7 +809,12 @@ function fillMapGrid(gridEl, width, height) {
       if (isVisible && tokenMap.has(cellKey)) {
         const t = tokenMap.get(cellKey);
         const token = document.createElement("div");
-        token.className = `token ${t.type}`;
+        const isMine = Boolean(myCharId && t.characterId === myCharId);
+        token.className = `token ${t.type}${isMine ? " mine" : ""}${
+          state.selectedTokenId === t.id ? " selected" : ""
+        }`;
+        token.dataset.tokenId = t.id;
+        if (isMine) token.dataset.mine = "1";
         if (t.portraitUrl) {
           token.classList.add("has-portrait");
           token.style.backgroundImage = `url("${t.portraitUrl}")`;
@@ -756,11 +822,103 @@ function fillMapGrid(gridEl, width, height) {
         } else {
           token.textContent = t.name.slice(0, 2).toUpperCase();
         }
+        if (isMine) {
+          token.title = "Ваш токен · тап, затем клетка";
+          token.addEventListener("click", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            state.selectedTokenId = state.selectedTokenId === t.id ? null : t.id;
+            updateMoveHint();
+            renderMap();
+          });
+        }
         cell.appendChild(token);
       }
+
+      if (isVisible) {
+        cell.addEventListener("click", (e) => {
+          if (!state.selectedTokenId) return;
+          e.preventDefault();
+          e.stopPropagation();
+          moveSelectedTokenTo(x, y).catch((err) => showRollToast(String(err.message || err)));
+        });
+      }
+
       gridEl.appendChild(cell);
     }
   }
+  updateMoveHint();
+}
+
+function updateMoveHint() {
+  if (!ui.playerMoveHint) return;
+  if (state.selectedTokenId) {
+    ui.playerMoveHint.textContent = "Выбран токен — тапни клетку хода";
+    ui.playerMoveHint.classList.add("active");
+  } else {
+    ui.playerMoveHint.textContent = "Тапни свой токен, затем клетку";
+    ui.playerMoveHint.classList.remove("active");
+  }
+}
+
+async function moveSelectedTokenTo(x, y) {
+  const tokenId = state.selectedTokenId;
+  if (!tokenId) return;
+  await call(`/map/tokens/${tokenId}/move`, {
+    method: "PATCH",
+    body: JSON.stringify({ position: { x, y } })
+  });
+  state.selectedTokenId = null;
+  updateMoveHint();
+  await refreshMap();
+}
+
+async function adjustPlayerHp(action) {
+  if (!state.character?.id) {
+    showRollToast("Сначала привяжите персонажа");
+    return;
+  }
+  const data = await call("/characters/hp", {
+    method: "POST",
+    body: JSON.stringify({ characterId: state.character.id, action })
+  });
+  if (data.character) {
+    state.character = { ...state.character, ...data.character, vitals: data.character.vitals };
+    renderCombatHeader();
+  }
+  if (Array.isArray(data.combatLog)) {
+    state.mapVision = state.mapVision || {};
+    state.mapVision.combatLog = data.combatLog;
+    renderPlayerCombatLog();
+  }
+  await refreshMap();
+}
+
+function syncPlayerRollModeUi() {
+  ui.playerRollMode?.querySelectorAll("[data-roll-mode]").forEach((btn) => {
+    btn.classList.toggle("primary", btn.dataset.rollMode === state.rollMode);
+  });
+}
+
+function setupPlayerHpAndRollMode() {
+  if (ui.playerHpBtns && ui.playerHpBtns.dataset.bound !== "1") {
+    ui.playerHpBtns.dataset.bound = "1";
+    ui.playerHpBtns.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-hp-action]");
+      if (!btn) return;
+      adjustPlayerHp(btn.dataset.hpAction).catch((err) => showRollToast(String(err.message || err)));
+    });
+  }
+  if (ui.playerRollMode && ui.playerRollMode.dataset.bound !== "1") {
+    ui.playerRollMode.dataset.bound = "1";
+    ui.playerRollMode.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-roll-mode]");
+      if (!btn) return;
+      state.rollMode = btn.dataset.rollMode || "normal";
+      syncPlayerRollModeUi();
+    });
+  }
+  syncPlayerRollModeUi();
 }
 
 function currentMapTitle() {
@@ -1092,7 +1250,7 @@ async function renderTab() {
   }
 
   // Подтянуть описания заклинаний и актуальные данные листа
-  if (!state.character.preparedSpellsDetailed && state.character.id) {
+  if (state.character.id && (!state.character.preparedSpellsDetailed || state.activeTab === "spells")) {
     try {
       const fresh = await call(`/characters/${state.character.id}`);
       state.character = fresh;
@@ -2255,7 +2413,11 @@ document.getElementById("playerMapDice")?.addEventListener("click", (e) => {
 });
 
 ui.mapInspectOpenBtn?.addEventListener("click", () => openMapInspect());
-ui.playerMapWrap?.addEventListener("click", () => openMapInspect());
+ui.playerMapWrap?.addEventListener("click", (e) => {
+  if (state.selectedTokenId) return;
+  if (e.target.closest?.(".token.mine")) return;
+  openMapInspect();
+});
 ui.mapInspectCloseBtn?.addEventListener("click", () => closeMapInspect());
 ui.mapInspectZoomIn?.addEventListener("click", () => bumpInspectZoom(0.25));
 ui.mapInspectZoomOut?.addEventListener("click", () => bumpInspectZoom(-0.25));
@@ -2272,6 +2434,7 @@ window.addEventListener("keydown", (e) => {
 setupTabs();
 setupCombatAbilityRolls();
 setupPlayerWeaponStrip();
+setupPlayerHpAndRollMode();
 renderPlayerWeaponStrip();
 
 if (!(await restoreSession())) {
