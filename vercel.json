@@ -3,6 +3,7 @@
   "framework": null,
   "installCommand": "pnpm install",
   "buildCommand": "echo \"runtime is plain node mjs\"",
+  "outputDirectory": "public",
   "rewrites": [
     { "source": "/(.*)", "destination": "/api" }
   ],
