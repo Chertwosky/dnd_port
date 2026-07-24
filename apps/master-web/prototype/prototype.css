@@ -767,6 +767,44 @@ button.warn {
   display: none;
 }
 
+.map-compact .token.show-name-label .token-name-tag {
+  display: block;
+}
+
+.token.show-name-label {
+  overflow: visible;
+  z-index: 4;
+}
+
+.token.show-name-label .token-name-tag {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 2px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(8, 12, 20, 0.92);
+  border: 1px solid #c9a24a;
+  color: #fde68a;
+  font-size: max(9px, calc(var(--map-cell-size) * 0.55));
+  font-weight: 700;
+  line-height: 1.2;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.token.show-name-label .token-initials {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: max(6px, calc(var(--map-cell-size) * 0.42));
+}
+
 .token.dragging {
   opacity: 0.85;
   outline: 2px solid #fff;
@@ -2938,6 +2976,14 @@ button.npc-check {
   border-radius: 10px;
 }
 
+.map-names-toggle {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
 .player-map {
   border: 1px solid #304158;
   border-radius: 12px;
@@ -4069,6 +4115,13 @@ textarea {
 .spectator-map-meta {
   font-size: 0.9rem;
   text-align: right;
+}
+
+.spectator-top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
 }
 
 .spectator-layout {

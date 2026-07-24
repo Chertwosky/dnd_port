@@ -83,6 +83,7 @@ const ui = {
   playerWeaponStrip: document.getElementById("playerWeaponStrip"),
   playerMapDice: document.getElementById("playerMapDice"),
   mapInspectOpenBtn: document.getElementById("mapInspectOpenBtn"),
+  playerShowNamesBtn: document.getElementById("playerShowNamesBtn"),
   mapInspectOverlay: document.getElementById("mapInspectOverlay"),
   mapInspectCloseBtn: document.getElementById("mapInspectCloseBtn"),
   mapInspectTitle: document.getElementById("mapInspectTitle"),
@@ -119,6 +120,7 @@ const state = {
   inventory: [],
   rollMode: "normal",
   selectedTokenId: null,
+  showTokenNames: false,
   npcCache: null,
   privateChat: { thread: null, dice: [4, 6, 8, 10, 12, 20] },
   chatSeenId: "",
@@ -853,31 +855,42 @@ function fillMapGrid(gridEl, width, height) {
         const t = tokenOnCell;
         const token = document.createElement("div");
         const isMine = Boolean(myCharId && t.characterId === myCharId);
+        const isHero = t.type === "player" || Boolean(t.characterId);
+        const showNames = Boolean(state.showTokenNames && isHero);
         token.className = `token ${t.type}${isMine ? " mine" : ""}${
           state.selectedTokenId === t.id ? " selected" : ""
-        }`;
+        }${showNames ? " show-name-label" : ""}`;
         token.dataset.tokenId = t.id;
         if (isMine) token.dataset.mine = "1";
+        const shortName = String(t.name || "?").trim();
         if (t.portraitUrl) {
           token.classList.add("has-portrait");
           token.style.backgroundImage = `url("${t.portraitUrl}")`;
-          token.innerHTML = `<span class="token-name-tag">${t.name.slice(0, 8)}</span>`;
+          token.innerHTML = `<span class="token-name-tag">${escapeHtml(shortName.slice(0, showNames ? 14 : 8))}</span>`;
+        } else if (showNames) {
+          token.innerHTML = `<span class="token-name-tag">${escapeHtml(shortName.slice(0, 14))}</span><span class="token-initials">${escapeHtml(
+            shortName.slice(0, 2).toUpperCase()
+          )}</span>`;
         } else {
-          token.textContent = t.name.slice(0, 2).toUpperCase();
+          token.textContent = shortName.slice(0, 2).toUpperCase();
         }
-        token.title = isMine ? "Ваш токен · тап — ход, ещё раз — снять" : `Открыть карточку: ${t.name}`;
+        token.title = isMine
+          ? "Ваш токен · тап — ход, ещё раз — снять"
+          : isHero
+            ? `Герой: ${shortName}`
+            : `Открыть карточку: ${shortName}`;
         token.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
           if (isMine) {
+            showPlayerMapTip(cell, [`Вы: ${shortName}`]);
             state.selectedTokenId = state.selectedTokenId === t.id ? null : t.id;
             updateMoveHint();
             renderMap();
             return;
           }
-          const kind =
-            t.type === "monster" ? "Монстр" : t.type === "player" ? "Герой" : "NPC";
-          showPlayerMapTip(cell, [`${kind}: ${t.name}`]);
+          const kind = t.type === "monster" ? "Монстр" : isHero ? "Герой" : "NPC";
+          showPlayerMapTip(cell, [`${kind}: ${shortName}`]);
           openMapTokenSheet(t).catch((err) => showRollToast(String(err.message || err)));
         });
         cell.appendChild(token);
@@ -2546,6 +2559,13 @@ document.getElementById("playerMapDice")?.addEventListener("click", (e) => {
 });
 
 ui.mapInspectOpenBtn?.addEventListener("click", () => openMapInspect());
+ui.playerShowNamesBtn?.addEventListener("click", () => {
+  state.showTokenNames = !state.showTokenNames;
+  ui.playerShowNamesBtn.classList.toggle("primary", state.showTokenNames);
+  ui.playerShowNamesBtn.setAttribute("aria-pressed", state.showTokenNames ? "true" : "false");
+  renderMap();
+  if (mapInspect.open) paintInspectMap();
+});
 ui.playerMapWrap?.addEventListener("click", (e) => {
   if (state.selectedTokenId) return;
   if (e.target.closest?.(".token")) return;
