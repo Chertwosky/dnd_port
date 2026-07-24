@@ -308,6 +308,204 @@ function abilityModifier(score) {
   return Math.floor((Number(score ?? 10) - 10) / 2);
 }
 
+const ABILITY_LABELS_RU = {
+  str: "Сила",
+  dex: "Ловкость",
+  con: "Телосложение",
+  int: "Интеллект",
+  wis: "Мудрость",
+  cha: "Харизма"
+};
+
+const SKILL_ABILITY_DEFAULTS = {
+  acrobatics: "dex",
+  "animal handling": "wis",
+  animalhandling: "wis",
+  arcana: "int",
+  athletics: "str",
+  deception: "cha",
+  history: "int",
+  insight: "wis",
+  intimidation: "cha",
+  investigation: "int",
+  medicine: "wis",
+  nature: "int",
+  perception: "wis",
+  performance: "cha",
+  persuasion: "cha",
+  religion: "int",
+  "sleight of hand": "dex",
+  sleightofhand: "dex",
+  stealth: "dex",
+  survival: "wis"
+};
+
+const SKILL_LABELS_RU = {
+  acrobatics: "Акробатика",
+  "animal handling": "Уход за животными",
+  animalhandling: "Уход за животными",
+  arcana: "Магия",
+  athletics: "Атлетика",
+  deception: "Обман",
+  history: "История",
+  insight: "Проницательность",
+  intimidation: "Запугивание",
+  investigation: "Анализ",
+  medicine: "Медицина",
+  nature: "Природа",
+  perception: "Внимательность",
+  performance: "Выступление",
+  persuasion: "Убеждение",
+  religion: "Религия",
+  "sleight of hand": "Ловкость рук",
+  sleightofhand: "Ловкость рук",
+  stealth: "Скрытность",
+  survival: "Выживание"
+};
+
+function normalizeSkillKey(raw) {
+  return String(raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function rollD20() {
+  return 1 + Math.floor(Math.random() * 20);
+}
+
+function fmtSigned(n) {
+  const v = Number(n) || 0;
+  return v >= 0 ? `+${v}` : `${v}`;
+}
+
+function appendCombatLog(game, entry) {
+  if (!Array.isArray(game.combatLog)) game.combatLog = [];
+  game.combatLog.push(entry);
+  if (game.combatLog.length > 80) game.combatLog = game.combatLog.slice(-80);
+  return entry;
+}
+
+function publicCombatLog(game) {
+  return (game.combatLog || []).slice(-30).reverse();
+}
+
+function characterAbilityMod(character, ability) {
+  const a = character?.abilities?.[ability];
+  if (a && a.modifier != null && Number.isFinite(Number(a.modifier))) {
+    return Number(a.modifier);
+  }
+  return abilityModifier(a?.score);
+}
+
+function characterSkillBonus(character, skillKey) {
+  const key = normalizeSkillKey(skillKey);
+  const skills = Array.isArray(character?.skills) ? character.skills : [];
+  const skill =
+    skills.find((s) => normalizeSkillKey(s.key) === key || normalizeSkillKey(s.label) === key) ||
+    skills.find((s) => normalizeSkillKey(s.key).replace(/\s/g, "") === key.replace(/\s/g, "")) ||
+    null;
+  const ability =
+    (skill?.baseAbility && ABILITY_LABELS_RU[skill.baseAbility] ? skill.baseAbility : null) ||
+    SKILL_ABILITY_DEFAULTS[key] ||
+    SKILL_ABILITY_DEFAULTS[key.replace(/\s/g, "")] ||
+    "dex";
+  const mod = characterAbilityMod(character, ability);
+  const profLevel = Number(skill?.proficiencyLevel || 0);
+  const pb = Number(character?.proficiencyBonus || 2);
+  const bonus = mod + profLevel * pb;
+  const label =
+    SKILL_LABELS_RU[key] ||
+    SKILL_LABELS_RU[key.replace(/\s/g, "")] ||
+    skill?.label ||
+    skill?.key ||
+    skillKey;
+  return { bonus, ability, label: String(label) };
+}
+
+function npcAbilityMod(npc, ability) {
+  const raw = npc?.abilities?.[ability];
+  if (raw && typeof raw === "object") {
+    if (raw.modifier != null) return Number(raw.modifier) || 0;
+    return abilityModifier(raw.score);
+  }
+  return abilityModifier(raw);
+}
+
+function parseNpcSkillBonus(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "object") {
+    const n = Number(raw.bonus ?? raw.value ?? raw.mod);
+    return Number.isFinite(n) ? n : null;
+  }
+  const m = String(raw).match(/([+-]?\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
+function findNpcInGame(game, { npcId, tokenId, name } = {}) {
+  const list = Array.isArray(game.customNpcs) ? game.customNpcs : [];
+  if (npcId) {
+    const byId = list.find((n) => n.id === npcId);
+    if (byId) return byId;
+  }
+  const token = tokenId ? (game.map?.tokens || []).find((t) => t.id === tokenId) : null;
+  if (token?.npcId) {
+    const byTokenNpc = list.find((n) => n.id === token.npcId);
+    if (byTokenNpc) return byTokenNpc;
+  }
+  const rawName = String(name || token?.name || "")
+    .replace(/\s*\(\d+\)\s*$/, "")
+    .replace(/\s*\([^)]*\)\s*$/, "")
+    .trim()
+    .toLowerCase();
+  if (!rawName) return null;
+  return (
+    list.find((n) => String(n.name || "").trim().toLowerCase() === rawName) ||
+    list.find((n) => rawName.startsWith(String(n.name || "").trim().toLowerCase())) ||
+    null
+  );
+}
+
+function npcSkillBonus(npc, skillKey, abilityHint) {
+  const key = normalizeSkillKey(skillKey);
+  const labelHint = SKILL_LABELS_RU[key] || SKILL_LABELS_RU[key.replace(/\s/g, "")] || skillKey;
+  const skills = npc?.skills;
+  let parsed = null;
+  if (Array.isArray(skills)) {
+    for (const item of skills) {
+      if (typeof item === "string") {
+        const lower = item.toLowerCase();
+        if (lower.includes(String(labelHint).toLowerCase()) || lower.includes(key)) {
+          parsed = parseNpcSkillBonus(item);
+          break;
+        }
+      } else if (item && typeof item === "object") {
+        const name = normalizeSkillKey(item.name || item.label || item.key);
+        if (name === key || name.includes(key) || key.includes(name)) {
+          parsed = parseNpcSkillBonus(item.bonus ?? item.value ?? item.description);
+          break;
+        }
+      }
+    }
+  } else if (skills && typeof skills === "object") {
+    for (const [name, bonus] of Object.entries(skills)) {
+      if (normalizeSkillKey(name) === key || normalizeSkillKey(name).includes(key)) {
+        parsed = parseNpcSkillBonus(bonus);
+        break;
+      }
+    }
+  }
+  const ability =
+    (ABILITY_LABELS_RU[abilityHint] ? abilityHint : null) ||
+    SKILL_ABILITY_DEFAULTS[key] ||
+    SKILL_ABILITY_DEFAULTS[key.replace(/\s/g, "")] ||
+    "dex";
+  const bonus = parsed != null && Number.isFinite(parsed) ? parsed : npcAbilityMod(npc, ability);
+  return { bonus, ability, label: String(labelHint) };
+}
+
 /** Mongo ObjectId из режима cards LSS (без имени заклинания в экспорте). */
 function isLssSpellObjectId(value) {
   return /^[a-f0-9]{24}$/i.test(String(value || "").trim());
@@ -1025,6 +1223,7 @@ async function requestHandler(req, res) {
       "/maps/view",
       "/adventures",
       "/combat/hp",
+      "/combat/roll",
       "/combat/encounter",
       "/combat/initiative/roll",
       "/combat/initiative/auto",
@@ -1570,7 +1769,7 @@ async function requestHandler(req, res) {
           game
         }),
         loot: isMaster ? lootPublicView(ensureLootState(game)) : undefined,
-        combatLog: isMaster ? (game.combatLog || []).slice(-30).reverse() : undefined,
+        combatLog: publicCombatLog(game),
         viewerRole: session?.role ?? "unknown"
       });
       return;
@@ -1941,6 +2140,7 @@ async function requestHandler(req, res) {
         (applied < 0 ? `Урон · ${token.name}` : applied > 0 ? `Лечение · ${token.name}` : `ХП · ${token.name}`);
       const log = {
         id: randomId("combat"),
+        type: "hp",
         tokenId: token.id,
         tokenName: token.name,
         delta: applied,
@@ -1949,16 +2149,141 @@ async function requestHandler(req, res) {
         reason,
         createdAt: new Date().toISOString()
       };
-      if (!Array.isArray(game.combatLog)) game.combatLog = [];
-      game.combatLog.push(log);
-      if (game.combatLog.length > 80) game.combatLog = game.combatLog.slice(-80);
+      appendCombatLog(game, log);
       const member = lobby.members.find((m) => m.id === getSession(req)?.userId);
       sendJson(res, 200, {
         token,
         log,
-        combatLog: game.combatLog.slice(-30).reverse(),
+        combatLog: publicCombatLog(game),
         combat: combatPublicView(ensureCombat(game), {
           viewerRole: "master",
+          characterId: member?.characterId || null,
+          game
+        })
+      });
+      return;
+    }
+
+    if (req.method === "POST" && parsedUrl.pathname === "/combat/roll") {
+      const session = getSession(req);
+      if (!session || (session.role !== "master" && session.role !== "player")) {
+        sendJson(res, 403, { error: "Нужна сессия" });
+        return;
+      }
+      const body = await readJson(req);
+      const kind = String(body.kind || "").trim();
+      if (kind !== "ability" && kind !== "skill") {
+        sendJson(res, 400, { error: "kind: ability или skill" });
+        return;
+      }
+      const member = lobby.members.find((m) => m.id === session.userId);
+      let character = null;
+      let npc = null;
+      let actorName = "";
+
+      if (session.role === "player") {
+        const characterId = member?.characterId;
+        if (!characterId) {
+          sendJson(res, 400, { error: "Сначала привяжите персонажа" });
+          return;
+        }
+        if (body.characterId && body.characterId !== characterId) {
+          sendJson(res, 403, { error: "Можно бросать только за своего персонажа" });
+          return;
+        }
+        character = game.characters.find((c) => c.id === characterId);
+        if (!character) {
+          sendJson(res, 404, { error: "Персонаж не найден" });
+          return;
+        }
+        actorName = character.name;
+      } else {
+        if (body.characterId) {
+          character = game.characters.find((c) => c.id === body.characterId);
+          if (!character) {
+            sendJson(res, 404, { error: "Персонаж не найден" });
+            return;
+          }
+          actorName = character.name;
+        } else {
+          npc = findNpcInGame(game, {
+            npcId: body.npcId,
+            tokenId: body.tokenId,
+            name: body.actorName
+          });
+          if (!npc && body.tokenId) {
+            const token = (game.map?.tokens || []).find((t) => t.id === body.tokenId);
+            if (token && (token.type === "npc" || token.type === "monster")) {
+              npc = {
+                id: token.npcId || token.id,
+                name: token.name,
+                abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+                skills: []
+              };
+            }
+          }
+          if (!npc) {
+            sendJson(res, 400, { error: "Укажите characterId или npcId/tokenId" });
+            return;
+          }
+          actorName = npc.name;
+        }
+      }
+
+      let bonus = 0;
+      let label = "";
+      let abilityKey = null;
+
+      if (kind === "ability") {
+        abilityKey = String(body.ability || "").toLowerCase();
+        if (!ABILITY_LABELS_RU[abilityKey]) {
+          sendJson(res, 400, { error: "Неизвестная характеристика" });
+          return;
+        }
+        label = ABILITY_LABELS_RU[abilityKey];
+        bonus = character ? characterAbilityMod(character, abilityKey) : npcAbilityMod(npc, abilityKey);
+      } else {
+        const skillKey = body.skillKey || body.skill || body.label;
+        if (!skillKey) {
+          sendJson(res, 400, { error: "Укажите skillKey" });
+          return;
+        }
+        const resolved = character
+          ? characterSkillBonus(character, skillKey)
+          : npcSkillBonus(npc, skillKey, body.ability);
+        bonus = resolved.bonus;
+        label = resolved.label;
+        abilityKey = resolved.ability;
+      }
+
+      const roll = rollD20();
+      const total = roll + bonus;
+      const detail = `d20(${roll}) ${fmtSigned(bonus)} = ${total}`;
+      const log = {
+        id: randomId("combat"),
+        type: "roll",
+        actorName,
+        actorRole: session.role,
+        rollerName: session.userName,
+        characterId: character?.id || null,
+        npcId: npc?.id || null,
+        tokenId: body.tokenId || null,
+        kind,
+        ability: abilityKey,
+        label,
+        die: 20,
+        roll,
+        bonus,
+        total,
+        detail,
+        createdAt: new Date().toISOString()
+      };
+      appendCombatLog(game, log);
+      sendJson(res, 200, {
+        log,
+        combatLog: publicCombatLog(game),
+        combat: combatPublicView(ensureCombat(game), {
+          viewerRole: session.role,
           characterId: member?.characterId || null,
           game
         })

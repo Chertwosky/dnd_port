@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Игрок — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps24" />
+    <link rel="stylesheet" href="/app.css?v=maps25" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -109,6 +109,7 @@
           <button type="button" id="rollInitiativeBtn" class="primary init-roll-btn">🎲 Бросить инициативу</button>
           <div id="initiativeRollResult" class="muted"></div>
         </div>
+        <div id="rollToast" class="roll-toast hidden" aria-live="polite"></div>
 
         <div id="playerInitiativeBar" class="init-bar hidden" aria-live="polite"></div>
 
@@ -120,6 +121,11 @@
         </div>
         <div class="player-map" id="playerMapWrap">
           <div id="playerMapGrid" class="player-map-grid"></div>
+        </div>
+
+        <div class="card stack" style="gap:8px">
+          <div class="subtitle">Журнал боя</div>
+          <div id="playerCombatLog" class="list"></div>
         </div>
 
         <div class="player-sheet stack">
@@ -165,6 +171,6 @@
       <div class="modal-card stack npc-sheet-card" id="npcSheetModalBody"></div>
     </div>
 
-    <script type="module" src="/player.js?v=33"></script>
+    <script type="module" src="/player.js?v=34"></script>
   </body>
 </html>

@@ -23,13 +23,21 @@ function abilityModNum(score) {
   return Math.floor((n - 10) / 2);
 }
 
-function listBlock(title, items) {
+function listBlock(title, items, { rollable = false } = {}) {
   if (!items || items.length === 0) return "";
   const lines = items
     .map((item) => {
-      if (typeof item === "string") return `<li>${escapeHtml(item)}</li>`;
+      if (typeof item === "string") {
+        if (!rollable) return `<li>${escapeHtml(item)}</li>`;
+        const bonusMatch = item.match(/([+-]?\d+)/);
+        const nameGuess = item.replace(/[+-]?\d+.*/, "").trim() || item;
+        return `<li><button type="button" class="npc-skill-roll hs-rollable" data-roll="skill" data-skill-key="${escapeAttr(nameGuess)}" data-roll-label="${escapeAttr(nameGuess)}" title="Клик — бросок">${escapeHtml(item)}</button></li>`;
+      }
       if (item.name && item.bonus) {
-        return `<li><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.bonus)}</li>`;
+        if (!rollable) {
+          return `<li><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.bonus)}</li>`;
+        }
+        return `<li><button type="button" class="npc-skill-roll hs-rollable" data-roll="skill" data-skill-key="${escapeAttr(item.name)}" data-roll-label="${escapeAttr(item.name)}" title="Клик — бросок"><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.bonus)}</button></li>`;
       }
       if (item.name && item.description) {
         return `<li><strong>${escapeHtml(item.name)}.</strong> ${escapeHtml(item.description)}</li>`;
@@ -62,20 +70,30 @@ function derivedChecksHtml(npc) {
   const cha = abilityModNum(abs.cha);
   const fmt = (n) => (n >= 0 ? `+${n}` : String(n));
   const rows = [
-    ["Инициатива", fmt(dex)],
-    ["Пассивное восприятие", String(10 + wis)],
-    ["Атлетика (оценка)", fmt(str)],
-    ["Акробатика (оценка)", fmt(dex)],
-    ["Анализ (оценка)", fmt(int)],
-    ["Проницательность (оценка)", fmt(wis)],
-    ["Убеждение (оценка)", fmt(cha)]
+    ["initiative", "Инициатива", "dex", fmt(dex)],
+    ["perception", "Пассивное восприятие", "wis", String(10 + wis)],
+    ["athletics", "Атлетика (оценка)", "str", fmt(str)],
+    ["acrobatics", "Акробатика (оценка)", "dex", fmt(dex)],
+    ["investigation", "Анализ (оценка)", "int", fmt(int)],
+    ["insight", "Проницательность (оценка)", "wis", fmt(wis)],
+    ["persuasion", "Убеждение (оценка)", "cha", fmt(cha)]
   ];
   return `<div class="npc-sheet-block"><div class="subtitle">Проверки (по характеристикам)</div>
     <div class="npc-check-grid">${rows
-      .map(
-        ([label, val]) =>
-          `<div class="npc-check"><span class="muted">${escapeHtml(label)}</span><strong>${escapeHtml(val)}</strong></div>`
-      )
+      .map(([key, label, ability, val]) => {
+        const isPassive = key === "perception" && String(val) === String(10 + wis);
+        const rollKind = key === "initiative" ? "ability" : "skill";
+        const attrs =
+          rollKind === "ability"
+            ? `data-roll="ability" data-ability="dex" data-roll-label="Инициатива (Лов)"`
+            : `data-roll="skill" data-skill-key="${escapeAttr(key)}" data-ability="${escapeAttr(ability)}" data-roll-label="${escapeAttr(label)}"`;
+        if (isPassive && key === "perception") {
+          // passive perception is not a d20 check — still allow active Perception roll via skill
+        }
+        return `<button type="button" class="npc-check hs-rollable" ${attrs} title="Клик — бросок">
+          <span class="muted">${escapeHtml(label)}</span><strong>${escapeHtml(val)}</strong>
+        </button>`;
+      })
       .join("")}</div>
   </div>`;
 }
@@ -145,10 +163,10 @@ export function buildNpcSheetHtml(npc, opts = {}) {
       ${["str", "dex", "con", "int", "wis", "cha"]
         .map(
           (k) => `
-        <div class="stat-box">
+        <button type="button" class="stat-box hs-rollable" data-roll="ability" data-ability="${k}" data-roll-label="${k.toUpperCase()}" title="Клик — бросок">
           <div class="label">${k.toUpperCase()}</div>
           <div class="value">${escapeHtml(String(abs[k] ?? "—"))} (${abilityMod(abs[k])})</div>
-        </div>`
+        </button>`
         )
         .join("")}
     </div>
@@ -160,7 +178,7 @@ export function buildNpcSheetHtml(npc, opts = {}) {
     ${listBlock("Действия и атаки", npc.actions)}
     ${listBlock("Бонусные / реакции", npc.bonusActions || npc.reactions)}
     ${listBlock("Особенности", npc.traits)}
-    ${listBlock("Навыки", skills)}
+    ${listBlock("Навыки", skills, { rollable: true })}
     ${skills.length ? "" : derivedChecksHtml(npc)}
     ${listBlock("Чувства", npc.senses)}
     ${listBlock("Языки", npc.languages)}
@@ -201,6 +219,26 @@ export function openNpcSheetModal(ui, npc, opts = {}) {
   };
   ui.body.querySelector("[data-npc-sheet-close]")?.addEventListener("click", close);
   ui.modal.querySelector("[data-npc-sheet-backdrop], .modal-backdrop")?.addEventListener("click", close, { once: true });
+
+  if (typeof opts.onRoll === "function") {
+    ui.body.querySelectorAll("[data-roll]").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const kind = el.getAttribute("data-roll");
+        if (kind !== "ability" && kind !== "skill") return;
+        opts.onRoll({
+          kind,
+          ability: el.getAttribute("data-ability") || undefined,
+          skillKey: el.getAttribute("data-skill-key") || undefined,
+          label: el.getAttribute("data-roll-label") || undefined,
+          el,
+          npc,
+          token: opts.token || null
+        });
+      });
+    });
+  }
 
   const tokenId = opts.token?.id;
   if (opts.viewerRole === "master" && tokenId && typeof opts.onHpChange === "function") {

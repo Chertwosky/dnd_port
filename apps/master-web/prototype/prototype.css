@@ -1233,6 +1233,112 @@ button.warn {
   flex-shrink: 0;
 }
 
+button.hs-abil,
+button.hs-chip,
+button.stat-box,
+button.npc-check,
+button.npc-skill-roll,
+button.combat-abil {
+  font: inherit;
+  color: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.hs-rollable,
+.combat-abil[data-abil],
+.combat-abil.hs-rollable {
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.hs-rollable:hover,
+.hs-rollable:focus-visible,
+.combat-abil[data-abil]:hover,
+.combat-abil[data-abil]:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(75, 137, 255, 0.35);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.hs-rollable:active,
+.combat-abil[data-abil]:active {
+  transform: translateY(0);
+}
+
+button.npc-skill-roll {
+  display: inline;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted rgba(158, 193, 255, 0.55);
+  text-underline-offset: 3px;
+}
+
+button.npc-check {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #182232;
+  border: 1px solid #2c3d55;
+  text-align: left;
+}
+
+.combat-log-roll {
+  border-color: #4b89ff66;
+  background: linear-gradient(180deg, #1a2a40, #162030);
+}
+
+.combat-log-hp {
+  border-color: #3a4f6d;
+}
+
+.roll-toast {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(75, 137, 255, 0.14);
+  border: 1px solid rgba(75, 137, 255, 0.4);
+  font-size: 13px;
+}
+
+.quick-roll-panel {
+  gap: 8px;
+}
+
+.quick-roll-title {
+  font-size: 12px;
+}
+
+.quick-roll-abils {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.quick-roll-abils .hs-abil {
+  padding: 6px 2px;
+}
+
+.quick-roll-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.quick-roll-skills .hs-chip {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
 .hs-item-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -2698,6 +2804,7 @@ body.map-inspect-open {
   background: #182232;
   border: 1px solid #2c3d55;
   text-align: center;
+  cursor: pointer;
 }
 
 .combat-abil-label {

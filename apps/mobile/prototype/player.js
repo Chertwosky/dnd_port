@@ -1,6 +1,6 @@
-import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu } from "/character-sheet.js?v=17";
+import { buildCharacterSheetHtml, buildPlayerSheetTabHtml, parseFeatureBlocksFromCharacter, renderFeatureBlocksHtml, countParsedFeatures, skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=18";
 import { renderInitiativeBar } from "/initiative-bar.js?v=3";
-import { openNpcSheetModal } from "/npc-sheet.js?v=2";
+import { openNpcSheetModal } from "/npc-sheet.js?v=3";
 
 const SESSION_KEY = "dnd_player_session";
 
@@ -95,6 +95,8 @@ const ui = {
   npcSheetModal: document.getElementById("npcSheetModal"),
   npcSheetModalBody: document.getElementById("npcSheetModalBody"),
   tabBody: document.getElementById("tabBody"),
+  playerCombatLog: document.getElementById("playerCombatLog"),
+  rollToast: document.getElementById("rollToast"),
   levelUpModal: document.getElementById("levelUpModal"),
   levelUpModalBody: document.getElementById("levelUpModalBody"),
   levelUpModalClose: document.getElementById("levelUpModalClose")
@@ -244,6 +246,7 @@ async function renderCharacterTab() {
       ui.playerSheet.querySelector("[data-download-character]")?.addEventListener("click", () => {
         downloadCharacterJson(state.character);
       });
+      wirePlayerSheetRolls(ui.playerSheet);
     }
   } catch (error) {
     if (ui.playerSheet) {
@@ -447,18 +450,120 @@ function renderCombatHeader() {
     ui.combatAbilities?.querySelectorAll(".combat-abil").forEach((el) => {
       el.querySelector(".combat-abil-score").textContent = "—";
       el.querySelector(".combat-abil-mod").textContent = "—";
+      el.title = "";
     });
     return;
   }
   ui.combatHp.textContent = `${state.character.vitals.hpCurrent}/${state.character.vitals.hpMax}`;
   ui.combatAc.textContent = `${state.character.vitals.ac}`;
   const abs = state.character.abilities || {};
+  const labels = { str: "Сила", dex: "Ловкость", con: "Телосложение", int: "Интеллект", wis: "Мудрость", cha: "Харизма" };
   ui.combatAbilities?.querySelectorAll(".combat-abil").forEach((el) => {
     const key = el.getAttribute("data-abil");
     const a = abs[key] || {};
     el.querySelector(".combat-abil-score").textContent = a.score ?? "—";
     el.querySelector(".combat-abil-mod").textContent = fmtModLocal(a.modifier);
-    el.title = `${key.toUpperCase()}: ${a.score ?? "—"} (${fmtModLocal(a.modifier)})`;
+    el.title = `${labels[key] || key}: ${a.score ?? "—"} (${fmtModLocal(a.modifier)}) · клик — бросок`;
+    el.classList.add("hs-rollable");
+  });
+}
+
+function showRollToast(text) {
+  if (!ui.rollToast) return;
+  ui.rollToast.textContent = text;
+  ui.rollToast.classList.remove("hidden");
+  clearTimeout(showRollToast._t);
+  showRollToast._t = setTimeout(() => ui.rollToast?.classList.add("hidden"), 4500);
+}
+
+function renderPlayerCombatLog() {
+  if (!ui.playerCombatLog) return;
+  const entries = state.mapVision?.combatLog || [];
+  ui.playerCombatLog.innerHTML = "";
+  if (!entries.length) {
+    ui.playerCombatLog.innerHTML = `<div class="muted">Пока пусто — клик по характеристике или навыку появится здесь</div>`;
+    return;
+  }
+  for (const log of entries.slice(0, 16)) {
+    const row = document.createElement("div");
+    if (log.type === "roll") {
+      row.className = "card combat-log-roll";
+      const who = log.actorName || log.rollerName || "—";
+      row.innerHTML = `<strong>${escapeHtml(who)}</strong> · ${escapeHtml(log.label || "бросок")}
+        <div class="mono">${escapeHtml(log.detail || "")}</div>
+        <div class="muted" style="font-size:12px">${escapeHtml(log.rollerName && log.rollerName !== who ? `бросил: ${log.rollerName}` : "")}</div>`;
+    } else {
+      row.className = "card combat-log-hp";
+      const delta = Number(log.delta) || 0;
+      const sign = delta > 0 ? "+" : "";
+      const name = log.tokenName || "Токен";
+      const hp =
+        log.hpCurrent != null && log.hpMax != null ? ` · ${log.hpCurrent}/${log.hpMax}` : "";
+      row.innerHTML = `<strong>${escapeHtml(name)}</strong> <span class="mono">${sign}${delta}</span> ХП${escapeHtml(hp)}
+        <div class="muted" style="font-size:12px">${escapeHtml(log.reason || (delta < 0 ? "урон" : "лечение"))}</div>`;
+    }
+    ui.playerCombatLog.appendChild(row);
+  }
+}
+
+async function requestCombatRoll(payload) {
+  const data = await call("/combat/roll", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  if (Array.isArray(data.combatLog)) {
+    state.mapVision = state.mapVision || {};
+    state.mapVision.combatLog = data.combatLog;
+    renderPlayerCombatLog();
+  }
+  if (data.combat) {
+    state.mapVision = state.mapVision || {};
+    state.mapVision.combat = data.combat;
+    renderPlayerInitiative();
+  }
+  const log = data.log;
+  if (log?.detail) {
+    showRollToast(`${log.actorName || ""} · ${log.label || ""}: ${log.detail}`.trim());
+  }
+  return data;
+}
+
+function wirePlayerSheetRolls(root) {
+  bindSheetRolls(root, {
+    onRoll: ({ kind, ability, skillKey, label }) => {
+      if (!state.character?.id) {
+        showRollToast("Сначала привяжите персонажа");
+        return;
+      }
+      requestCombatRoll({
+        kind,
+        ability,
+        skillKey,
+        label,
+        characterId: state.character.id
+      }).catch((error) => showRollToast(String(error.message || error)));
+    }
+  });
+}
+
+function setupCombatAbilityRolls() {
+  if (!ui.combatAbilities || ui.combatAbilities.dataset.rollBound === "1") return;
+  ui.combatAbilities.dataset.rollBound = "1";
+  ui.combatAbilities.addEventListener("click", (e) => {
+    const el = e.target.closest?.("[data-abil]");
+    if (!el || !ui.combatAbilities.contains(el)) return;
+    if (!state.character?.id) {
+      showRollToast("Сначала привяжите персонажа");
+      return;
+    }
+    const ability = el.getAttribute("data-abil");
+    const labels = { str: "Сила", dex: "Ловкость", con: "Телосложение", int: "Интеллект", wis: "Мудрость", cha: "Харизма" };
+    requestCombatRoll({
+      kind: "ability",
+      ability,
+      label: labels[ability] || ability,
+      characterId: state.character.id
+    }).catch((error) => showRollToast(String(error.message || error)));
   });
 }
 
@@ -922,6 +1027,7 @@ async function renderTab() {
     ui.tabBody.innerHTML = buildPlayerSheetTabHtml(state.character, "inventory", {
       lootItems: state.inventory || []
     });
+    wirePlayerSheetRolls(ui.tabBody);
     return;
   }
 
@@ -929,6 +1035,7 @@ async function renderTab() {
     lootItems: state.inventory || []
   });
   wireParseNotesButton();
+  wirePlayerSheetRolls(ui.tabBody);
 }
 
 function wireParseNotesButton() {
@@ -1657,6 +1764,7 @@ async function refreshMap() {
   renderPlayerMapTabs();
   renderMap();
   renderPlayerInitiative();
+  renderPlayerCombatLog();
   await loadInventory();
 }
 
@@ -1722,6 +1830,10 @@ async function openHeroSheetReadonly(combatant) {
     ui.npcSheetModalBody.querySelector("[data-download-character]")?.addEventListener("click", () => {
       downloadCharacterJson(character);
     });
+    // Чужой лист — только просмотр, без бросков (сервер всё равно запретит)
+    if (state.character?.id && character.id === state.character.id) {
+      wirePlayerSheetRolls(ui.npcSheetModalBody);
+    }
   } catch (error) {
     console.error(error);
     if (ui.initiativeRollResult) {
@@ -1753,7 +1865,7 @@ function renderPlayerInitiative() {
         actions: [],
         notes: ""
       };
-      openNpcSheetModal(
+        openNpcSheetModal(
         { modal: ui.npcSheetModal, body: ui.npcSheetModalBody },
         {
           ...npc,
@@ -1891,6 +2003,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 setupTabs();
+setupCombatAbilityRolls();
 
 if (!(await restoreSession())) {
   showLogin();

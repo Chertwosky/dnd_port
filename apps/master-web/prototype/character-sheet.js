@@ -471,10 +471,12 @@ export function buildCharacterSheetParts(c) {
   const skillChip = (s, strong) => {
     const bonus = skillBonus(c, s);
     const label = skillLabelRu(s);
-    return `<div class="hs-chip ${strong ? "hs-chip-hot" : ""}" title="${escapeAttr(`${label} (${(s.baseAbility || "").toUpperCase()})`)}">
+    const skillKey = normalizeSkillKey(s.key || s.label || "");
+    const ability = String(s.baseAbility || "").toLowerCase();
+    return `<button type="button" class="hs-chip hs-rollable ${strong ? "hs-chip-hot" : ""}" title="${escapeAttr(`${label} (${(s.baseAbility || "").toUpperCase()}) · клик — бросок`)}" data-roll="skill" data-skill-key="${escapeAttr(skillKey)}" data-ability="${escapeAttr(ability)}" data-roll-label="${escapeAttr(label)}">
       <span class="hs-chip-label">${escapeHtml(label)}</span>
       <span class="hs-chip-val">${fmtMod(bonus)}</span>
-    </div>`;
+    </button>`;
   };
 
   const weaponsHtml = (c.weapons || [])
@@ -566,12 +568,12 @@ export function buildCharacterSheetParts(c) {
           .map((k) => {
             const a = abs[k] || {};
             const meta = ABIL_RU[k];
-            return `<div class="hs-abil" title="${escapeAttr(meta.label)}">
+            return `<button type="button" class="hs-abil hs-rollable" title="${escapeAttr(`${meta.label} · клик — бросок`)}" data-roll="ability" data-ability="${k}" data-roll-label="${escapeAttr(meta.label)}">
               <div class="hs-abil-ico">${meta.icon}</div>
               <div class="hs-abil-label">${meta.short}</div>
               <div class="hs-abil-score">${a.score ?? "—"}</div>
               <div class="hs-abil-mod">${fmtMod(a.modifier)}</div>
-            </div>`;
+            </button>`;
           })
           .join("")}
       </div>`;
@@ -846,4 +848,30 @@ export function buildCharacterSheetHtml(c, opts = {}) {
     ${textBlock("📝", "Заметки", (c.notes || []).slice(0, 6))}
     ${footer}
   `;
+}
+
+/**
+ * Делегирование кликов по характеристикам/навыкам листа.
+ * @param {ParentNode|null} root
+ * @param {{ onRoll?: (payload: { kind: string, ability?: string, skillKey?: string, label?: string, el: Element }) => void }} [opts]
+ */
+export function bindSheetRolls(root, opts = {}) {
+  if (!root || typeof opts.onRoll !== "function") return;
+  root.querySelectorAll("[data-roll]").forEach((el) => {
+    if (el.dataset.rollBound === "1") return;
+    el.dataset.rollBound = "1";
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const kind = el.getAttribute("data-roll");
+      if (kind !== "ability" && kind !== "skill") return;
+      opts.onRoll({
+        kind,
+        ability: el.getAttribute("data-ability") || undefined,
+        skillKey: el.getAttribute("data-skill-key") || undefined,
+        label: el.getAttribute("data-roll-label") || undefined,
+        el
+      });
+    });
+  });
 }

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Мастер — DnD Стол</title>
-    <link rel="stylesheet" href="/app.css?v=maps24" />
+    <link rel="stylesheet" href="/app.css?v=maps25" />
   </head>
   <body>
     <section id="screenLogin" class="login-wrap">
@@ -181,6 +181,10 @@
               <button type="button" id="endCombatBtn" class="warn">Конец боя</button>
             </div>
             <div id="combatStatus" class="muted">Бой не начат</div>
+            <div id="rollToast" class="roll-toast hidden" aria-live="polite"></div>
+            <div id="quickRollPanel" class="card stack quick-roll-panel">
+              <div class="muted">Быстрые броски появятся здесь</div>
+            </div>
             <div id="tokenPanel" class="list"></div>
             <div class="card">
               <div class="subtitle">Журнал боя</div>
@@ -300,6 +304,6 @@
       </div>
     </div>
 
-    <script type="module" src="/master.js?v=maps24"></script>
+    <script type="module" src="/master.js?v=maps25"></script>
   </body>
 </html>

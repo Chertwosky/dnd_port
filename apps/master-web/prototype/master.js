@@ -1,6 +1,6 @@
 import { renderInitiativeBar } from "/initiative-bar.js?v=3";
-import { openNpcSheetModal, closeNpcSheetModal, buildNpcSheetHtml } from "/npc-sheet.js?v=2";
-import { skillLabelRu } from "/character-sheet.js?v=17";
+import { openNpcSheetModal, closeNpcSheetModal, buildNpcSheetHtml } from "/npc-sheet.js?v=3";
+import { skillLabelRu, bindSheetRolls } from "/character-sheet.js?v=18";
 
 const SESSION_KEY = "dnd_master_session";
 
@@ -51,6 +51,8 @@ const ui = {
   mapGrid: document.getElementById("mapGrid"),
   tokenPanel: document.getElementById("tokenPanel"),
   combatLog: document.getElementById("combatLog"),
+  quickRollPanel: document.getElementById("quickRollPanel"),
+  rollToast: document.getElementById("rollToast"),
   tokenName: document.getElementById("tokenName"),
   tokenType: document.getElementById("tokenType"),
   tokenX: document.getElementById("tokenX"),
@@ -234,6 +236,7 @@ const state = {
   characters: [],
   members: [],
   combat: null,
+  rollTarget: null,
   rightTab: "combat",
   dragTokenId: null,
   openHeroId: null,
@@ -1030,7 +1033,24 @@ function renderTokenPanel() {
       await rollInitForToken(token.id);
     });
     row.querySelector("[data-npc-sheet]")?.addEventListener("click", async () => {
+      setRollTargetFromCombatant({
+        name: token.name,
+        type: token.type,
+        characterId: token.characterId || null,
+        npcId: token.npcId || npc?.id || null,
+        tokenId: token.id
+      });
       await openNpcSheetForToken(token);
+    });
+    row.addEventListener("click", (e) => {
+      if (e.target.closest("button")) return;
+      setRollTargetFromCombatant({
+        name: token.name,
+        type: token.type,
+        characterId: token.characterId || null,
+        npcId: token.npcId || npc?.id || null,
+        tokenId: token.id
+      });
     });
     ui.tokenPanel.appendChild(row);
   }
@@ -1199,10 +1219,16 @@ async function openHeroCard(characterId) {
   const skillChip = (s, strong) => {
     const bonus = skillBonus(c, s);
     const label = skillLabelRu(s);
-    return `<div class="hs-chip ${strong ? "hs-chip-hot" : ""}" title="${escapeAttr(`${label} (${(s.baseAbility || "").toUpperCase()})`)}">
+    const skillKey = String(s.key || s.label || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+    const ability = String(s.baseAbility || "").toLowerCase();
+    return `<button type="button" class="hs-chip hs-rollable ${strong ? "hs-chip-hot" : ""}" title="${escapeAttr(`${label} (${(s.baseAbility || "").toUpperCase()}) · клик — бросок`)}" data-roll="skill" data-skill-key="${escapeAttr(skillKey)}" data-ability="${escapeAttr(ability)}" data-roll-label="${escapeAttr(label)}">
       <span class="hs-chip-label">${escapeHtml(label)}</span>
       <span class="hs-chip-val">${fmtMod(bonus)}</span>
-    </div>`;
+    </button>`;
   };
 
   const weaponsHtml = (c.weapons || [])
@@ -1353,12 +1379,12 @@ async function openHeroCard(characterId) {
           .map((k) => {
             const a = abs[k] || {};
             const meta = ABIL_RU[k];
-            return `<div class="hs-abil" title="${escapeAttr(meta.label)}">
+            return `<button type="button" class="hs-abil hs-rollable" title="${escapeAttr(`${meta.label} · клик — бросок`)}" data-roll="ability" data-ability="${k}" data-roll-label="${escapeAttr(meta.label)}">
               <div class="hs-abil-ico">${meta.icon}</div>
               <div class="hs-abil-label">${meta.short}</div>
               <div class="hs-abil-score">${a.score ?? "—"}</div>
               <div class="hs-abil-mod">${fmtMod(a.modifier)}</div>
-            </div>`;
+            </button>`;
           })
           .join("")}
       </div>
@@ -1430,6 +1456,17 @@ async function openHeroCard(characterId) {
   if (ui.heroModalBody) ui.heroModalBody.dataset.characterId = c.id;
   document.getElementById("closeHeroCardBtn")?.addEventListener("click", closeHeroCard);
   await renderHeroXpBar(c, { allowGrantXp: true });
+  bindSheetRolls(ui.heroModalBody, {
+    onRoll: ({ kind, ability, skillKey, label }) => {
+      requestMasterRoll({
+        kind,
+        ability,
+        skillKey,
+        label,
+        characterId: c.id
+      }).catch((error) => showMasterRollToast(String(error.message || error)));
+    }
+  });
   ui.heroModalBody.querySelectorAll("[data-hp]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       try {
@@ -2802,7 +2839,16 @@ function renderHeroesList() {
     `;
     card.style.cursor = "pointer";
     card.title = "Открыть карточку героя";
-    card.addEventListener("click", () => openHeroCard(h.id));
+    card.addEventListener("click", () => {
+      setRollTargetFromCombatant({
+        name: h.name,
+        type: "player",
+        characterId: h.id,
+        npcId: null,
+        tokenId: (state.tokens || []).find((t) => t.characterId === h.id)?.id || null
+      });
+      openHeroCard(h.id);
+    });
     ui.heroesList.appendChild(card);
   }
 }
@@ -2895,6 +2941,17 @@ function openNpcSheet(npc, { token = null } = {}) {
     {
       token: liveToken,
       viewerRole: "master",
+      onRoll: ({ kind, ability, skillKey, label }) => {
+        requestMasterRoll({
+          kind,
+          ability,
+          skillKey,
+          label,
+          npcId: npc.id || null,
+          tokenId: liveToken?.id || null,
+          actorName: npc.name
+        }).catch((error) => showMasterRollToast(String(error.message || error)));
+      },
       onHpChange: async ({ tokenId, action, delta, reason }) => {
         const data = await call("/combat/hp", {
           method: "POST",
@@ -2980,12 +3037,14 @@ function openFromInitiative(combatant, sheet) {
       }
       return;
     }
+    setRollTargetFromCombatant(combatant);
     openHeroCard(combatant.characterId).catch((error) => {
       console.error(error);
       if (ui.combatStatus) ui.combatStatus.textContent = String(error.message || error);
     });
     return;
   }
+  setRollTargetFromCombatant(combatant);
   openNpcFromInitiative(combatant, sheet);
 }
 
@@ -2993,6 +3052,12 @@ function renderCombatInitiativeBar() {
   renderInitiativeBar(ui.initiativeBar, state.combat, {
     onOpenSheet: openFromInitiative
   });
+  const current = state.combat?.current || state.combat?.order?.[state.combat?.currentIndex || 0] || null;
+  if (current && (!state.rollTarget || state.rollTarget.tokenId === current.tokenId || !state.rollTarget.tokenId)) {
+    setRollTargetFromCombatant(current);
+  } else {
+    renderQuickRollPanel();
+  }
 }
 
 function openMonsterCard(m) {
@@ -3106,23 +3171,192 @@ function renderNpcs() {
   }
 }
 
+function showMasterRollToast(text) {
+  if (!ui.rollToast) return;
+  ui.rollToast.textContent = text;
+  ui.rollToast.classList.remove("hidden");
+  clearTimeout(showMasterRollToast._t);
+  showMasterRollToast._t = setTimeout(() => ui.rollToast?.classList.add("hidden"), 4500);
+}
+
+async function requestMasterRoll(payload) {
+  const data = await call("/combat/roll", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  if (Array.isArray(data.combatLog)) state.log = data.combatLog;
+  if (data.combat) {
+    state.combat = data.combat;
+    renderCombatInitiativeBar();
+  }
+  renderLog();
+  const log = data.log;
+  if (log?.detail) {
+    showMasterRollToast(`${log.actorName || ""} · ${log.label || ""}: ${log.detail}`.trim());
+  }
+  return data;
+}
+
+function setRollTargetFromCombatant(combatant) {
+  if (!combatant) {
+    state.rollTarget = null;
+    renderQuickRollPanel();
+    return;
+  }
+  state.rollTarget = {
+    name: combatant.name,
+    type: combatant.type,
+    characterId: combatant.characterId || null,
+    npcId: combatant.npcId || null,
+    tokenId: combatant.tokenId || null
+  };
+  renderQuickRollPanel();
+}
+
+function renderQuickRollPanel() {
+  if (!ui.quickRollPanel) return;
+  const target = state.rollTarget;
+  if (!target) {
+    const current = state.combat?.current || state.combat?.order?.[state.combat?.currentIndex || 0] || null;
+    if (current) {
+      state.rollTarget = {
+        name: current.name,
+        type: current.type,
+        characterId: current.characterId || null,
+        npcId: current.npcId || null,
+        tokenId: current.tokenId || null
+      };
+    }
+  }
+  const t = state.rollTarget;
+  if (!t) {
+    ui.quickRollPanel.innerHTML = `<div class="muted">Выберите бойца в инициативе или токен — здесь появятся быстрые броски</div>`;
+    return;
+  }
+
+  const character = t.characterId ? (state.characters || []).find((c) => c.id === t.characterId) : null;
+  const npc =
+    !character && (t.npcId || t.tokenId)
+      ? findNpcForToken({ id: t.tokenId, npcId: t.npcId, name: t.name }) ||
+        (state.npcs || []).find((n) => n.id === t.npcId) ||
+        null
+      : null;
+
+  const ABIL_RU = {
+    str: { label: "Сила", short: "Сил", icon: "💪" },
+    dex: { label: "Ловкость", short: "Лов", icon: "🤸" },
+    con: { label: "Телосложение", short: "Тел", icon: "🫀" },
+    int: { label: "Интеллект", short: "Инт", icon: "🧠" },
+    wis: { label: "Мудрость", short: "Мдр", icon: "👁️" },
+    cha: { label: "Харизма", short: "Хар", icon: "✨" }
+  };
+
+  let abilHtml = "";
+  let skillsHtml = "";
+
+  if (character) {
+    const abs = character.abilities || {};
+    abilHtml = ["str", "dex", "con", "int", "wis", "cha"]
+      .map((k) => {
+        const a = abs[k] || {};
+        const meta = ABIL_RU[k];
+        return `<button type="button" class="hs-abil hs-rollable" data-roll="ability" data-ability="${k}" data-roll-label="${escapeAttr(meta.label)}" title="${escapeAttr(meta.label)}">
+          <div class="hs-abil-ico">${meta.icon}</div>
+          <div class="hs-abil-label">${meta.short}</div>
+          <div class="hs-abil-score">${a.score ?? "—"}</div>
+          <div class="hs-abil-mod">${fmtMod(a.modifier)}</div>
+        </button>`;
+      })
+      .join("");
+    const skills = (character.skills || []).filter((s) => Number(s.proficiencyLevel) > 0).slice(0, 8);
+    skillsHtml = skills
+      .map((s) => {
+        const label = skillLabelRu(s);
+        const key = String(s.key || s.label || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[_-]+/g, " ")
+          .replace(/\s+/g, " ");
+        const bonus = skillBonus(character, s);
+        return `<button type="button" class="hs-chip hs-chip-hot hs-rollable" data-roll="skill" data-skill-key="${escapeAttr(key)}" data-ability="${escapeAttr(s.baseAbility || "")}" data-roll-label="${escapeAttr(label)}">
+          <span class="hs-chip-label">${escapeHtml(label)}</span>
+          <span class="hs-chip-val">${fmtMod(bonus)}</span>
+        </button>`;
+      })
+      .join("");
+  } else {
+    const source = npc || { abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, name: t.name };
+    const abs = source.abilities || {};
+    abilHtml = ["str", "dex", "con", "int", "wis", "cha"]
+      .map((k) => {
+        const score = typeof abs[k] === "object" ? abs[k]?.score : abs[k];
+        const mod =
+          typeof abs[k] === "object" && abs[k]?.modifier != null
+            ? Number(abs[k].modifier)
+            : Math.floor((Number(score ?? 10) - 10) / 2);
+        const meta = ABIL_RU[k];
+        return `<button type="button" class="hs-abil hs-rollable" data-roll="ability" data-ability="${k}" data-roll-label="${escapeAttr(meta.label)}" title="${escapeAttr(meta.label)}">
+          <div class="hs-abil-ico">${meta.icon}</div>
+          <div class="hs-abil-label">${meta.short}</div>
+          <div class="hs-abil-score">${score ?? "—"}</div>
+          <div class="hs-abil-mod">${fmtMod(mod)}</div>
+        </button>`;
+      })
+      .join("");
+  }
+
+  ui.quickRollPanel.innerHTML = `
+    <div class="quick-roll-title muted">Броски · <strong>${escapeHtml(t.name)}</strong></div>
+    <div class="quick-roll-abils hs-abil-grid">${abilHtml}</div>
+    ${skillsHtml ? `<div class="quick-roll-skills">${skillsHtml}</div>` : `<div class="muted" style="font-size:12px">Клик по характеристике — проверка</div>`}
+  `;
+
+  bindSheetRolls(ui.quickRollPanel, {
+    onRoll: ({ kind, ability, skillKey, label }) => {
+      const payload = {
+        kind,
+        ability,
+        skillKey,
+        label,
+        characterId: t.characterId || undefined,
+        npcId: t.npcId || undefined,
+        tokenId: t.tokenId || undefined,
+        actorName: t.name
+      };
+      requestMasterRoll(payload).catch((error) => showMasterRollToast(String(error.message || error)));
+    }
+  });
+}
+
 function renderLog() {
   ui.combatLog.innerHTML = "";
-  const entries = (state.log || []).slice(0, 12);
+  const entries = (state.log || []).slice(0, 16);
   if (!entries.length) {
-    ui.combatLog.innerHTML = `<div class="muted">Пока пусто — правки ХП из карточки NPC появятся здесь</div>`;
+    ui.combatLog.innerHTML = `<div class="muted">Пока пусто — броски и правки ХП появятся здесь</div>`;
     return;
   }
   for (const log of entries) {
     const row = document.createElement("div");
-    row.className = "card";
-    const delta = Number(log.delta) || 0;
-    const sign = delta > 0 ? "+" : "";
-    const name = log.tokenName || "Токен";
-    const hp =
-      log.hpCurrent != null && log.hpMax != null ? ` · ${log.hpCurrent}/${log.hpMax}` : "";
-    const reason = log.reason && !String(log.reason).includes(name) ? ` · ${log.reason}` : "";
-    row.innerHTML = `<strong>${escapeHtml(name)}</strong> <span class="mono">${sign}${delta}</span> ХП${escapeHtml(hp)}<div class="muted" style="font-size:12px">${escapeHtml(reason.replace(/^·\s*/, "") || (delta < 0 ? "урон" : "лечение"))}</div>`;
+    if (log.type === "roll") {
+      row.className = "card combat-log-roll";
+      const who = log.actorName || log.rollerName || "—";
+      row.innerHTML = `<strong>${escapeHtml(who)}</strong> · ${escapeHtml(log.label || "бросок")}
+        <div class="mono">${escapeHtml(log.detail || "")}</div>
+        <div class="muted" style="font-size:12px">${escapeHtml(
+          log.rollerName && log.rollerName !== who ? `бросил: ${log.rollerName}` : ""
+        )}</div>`;
+    } else {
+      row.className = "card combat-log-hp";
+      const delta = Number(log.delta) || 0;
+      const sign = delta > 0 ? "+" : "";
+      const name = log.tokenName || "Токен";
+      const hp =
+        log.hpCurrent != null && log.hpMax != null ? ` · ${log.hpCurrent}/${log.hpMax}` : "";
+      const reason = log.reason && !String(log.reason).includes(name) ? ` · ${log.reason}` : "";
+      row.innerHTML = `<strong>${escapeHtml(name)}</strong> <span class="mono">${sign}${delta}</span> ХП${escapeHtml(hp)}<div class="muted" style="font-size:12px">${escapeHtml(
+        reason.replace(/^·\s*/, "") || (delta < 0 ? "урон" : "лечение")
+      )}</div>`;
+    }
     ui.combatLog.appendChild(row);
   }
 }
@@ -3171,6 +3405,7 @@ async function syncVision() {
       state.npcs = npcs || [];
       renderNpcs();
       renderTokenPanel();
+      renderQuickRollPanel();
     })
     .catch(() => {});
 }
