@@ -2,16 +2,30 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "pnpm install",
-  "buildCommand": "echo \"runtime is plain node mjs\"",
+  "buildCommand": "node scripts/prepare-vercel-static.mjs",
   "outputDirectory": "public",
   "rewrites": [
+    { "source": "/master", "destination": "/master.html" },
+    { "source": "/player", "destination": "/player.html" },
+    { "source": "/prototype", "destination": "/index.html" },
+    { "source": "/prototype/master", "destination": "/master.html" },
+    { "source": "/prototype/player", "destination": "/player.html" },
     { "source": "/(.*)", "destination": "/api" }
   ],
   "functions": {
     "api/index.mjs": {
-      "includeFiles": "{apps/master-web/prototype/**,apps/mobile/prototype/**,apps/server/src/data/**,apps/server/src/modules/**}",
+      "includeFiles": "{apps/server/src/data/**,apps/server/src/modules/**}",
       "maxDuration": 60,
       "memory": 1024
     }
-  }
+  },
+  "headers": [
+    {
+      "source": "/(.*)\\.js",
+      "headers": [
+        { "key": "Content-Type", "value": "text/javascript; charset=utf-8" },
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    }
+  ]
 }

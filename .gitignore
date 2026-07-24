@@ -6,3 +6,8 @@ dist/
 .env
 .env.*
 !.env.example
+# generated on Vercel build; keep only .gitkeep locally if present
+public/**
+!public/.gitkeep
+
+.vercel
