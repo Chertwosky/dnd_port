@@ -18,12 +18,9 @@ State (лобби, карта, бой, журнал, персонажи) сох�
 
 ### Upstash для Vercel (5 минут)
 
-1. Зарегистрируйтесь на [upstash.com](https://upstash.com), создайте Redis DB.
-2. Скопируйте **REST URL** и **REST TOKEN**.
-3. В Vercel → Project → Settings → Environment Variables:
-   - `UPSTASH_REDIS_REST_URL`
-   - `UPSTASH_REDIS_REST_TOKEN`
-4. Redeploy.
+1. Vercel Marketplace → **Upstash for Redis** (или CLI: `vercel integration add upstash/upstash-kv`).
+2. Ресурс подключается к проекту и добавляет `KV_REST_API_URL` / `KV_REST_API_TOKEN` (наш сервер их читает).
+3. Redeploy.
 
 Проверка: `GET /health` → `"persist":"upstash"` (или `"file"` локально, `"memory"` без Redis на Vercel).
 

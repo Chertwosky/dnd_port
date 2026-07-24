@@ -13,3 +13,4 @@ public/**
 !public/.gitkeep
 
 .vercel
+.env*

@@ -18,9 +18,20 @@ const SESSION_TTL_SEC = Number(process.env.DND_SESSION_TTL_SEC || 60 * 60 * 24 *
 const LOBBY_TTL_SEC = Number(process.env.DND_LOBBY_TTL_SEC || 60 * 60 * 24 * 14);
 
 function backendName() {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) return "upstash";
+  if (
+    (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) ||
+    (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  ) {
+    return "upstash";
+  }
   if (process.env.VERCEL) return "memory";
   return "file";
+}
+
+function upstashCredentials() {
+  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  return { url, token };
 }
 
 let warnedMemory = false;
@@ -29,15 +40,15 @@ function warnMemoryOnce() {
   if (warnedMemory) return;
   warnedMemory = true;
   console.warn(
-    "[lobby-persist] Vercel without Upstash: state is in-memory only and will reset on cold start. Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN."
+    "[lobby-persist] Vercel without Upstash/KV: state is in-memory only and will reset on cold start. Connect Upstash or set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL + KV_REST_API_TOKEN)."
   );
 }
 
 /* ---------------- Upstash REST ---------------- */
 
 async function upstash(command) {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const { url, token } = upstashCredentials();
+  if (!url || !token) throw new Error("Upstash credentials missing");
   const res = await fetch(url, {
     method: "POST",
     headers: {
