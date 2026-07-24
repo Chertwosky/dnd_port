@@ -45,6 +45,15 @@ import {
   ensureCombat
 } from "./modules/combat-initiative.mjs";
 import {
+  getPersistBackend,
+  hydrateSession,
+  loadLobby,
+  loadOpenLobbies,
+  persistLobbyNow,
+  persistSession,
+  schedulePersistLobby
+} from "./modules/lobby-persist.mjs";
+import {
   addMapDoc,
   createEmptyMapDoc,
   ensureMapSystem,
@@ -85,6 +94,10 @@ const host = process.env.HOST ?? "0.0.0.0";
 const lobbies = new Map();
 /** @type {Map<string, { role: string, lobbyId?: string, userId: string, userName: string }>} */
 const sessions = new Map();
+
+/** Request-scoped: lobby to persist after successful mutating responses */
+let activePersistLobby = null;
+let shouldPersistLobbyOnSuccess = false;
 
 /** Текстуры карты: блокируют ли обзор; overlay — поверх базового тайла (тайник в стене/полу) */
 const MAP_TEXTURES = [
@@ -250,6 +263,14 @@ function randomId(prefix = "id") {
 }
 
 function sendJson(res, status, payload) {
+  if (
+    shouldPersistLobbyOnSuccess &&
+    activePersistLobby &&
+    status >= 200 &&
+    status < 400
+  ) {
+    schedulePersistLobby(activePersistLobby);
+  }
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
@@ -978,6 +999,8 @@ function translateToRu(input) {
 
 async function requestHandler(req, res) {
   const parsedUrl = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+  activePersistLobby = null;
+  shouldPersistLobbyOnSuccess = req.method !== "GET" && req.method !== "OPTIONS" && req.method !== "HEAD";
 
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
@@ -990,7 +1013,12 @@ async function requestHandler(req, res) {
   }
 
   if (parsedUrl.pathname === "/health") {
-    sendJson(res, 200, { ok: true, service: "@dnd/server", ts: new Date().toISOString() });
+    sendJson(res, 200, {
+      ok: true,
+      service: "@dnd/server",
+      ts: new Date().toISOString(),
+      persist: getPersistBackend()
+    });
     return;
   }
 
@@ -1042,6 +1070,9 @@ async function requestHandler(req, res) {
     return;
   }
 
+  // Restore session + lobby from disk/Redis after cold start
+  await hydrateSession(getSessionToken(req), sessions, lobbies);
+
   try {
     if (req.method === "POST" && parsedUrl.pathname === "/auth/master/login") {
       const body = await readJson(req);
@@ -1051,6 +1082,7 @@ async function requestHandler(req, res) {
         sendJson(res, 400, { error: "Укажите имя мастера и название лобби" });
         return;
       }
+      await loadOpenLobbies(lobbies);
       const lobbyId = randomId("lobby");
       const token = randomId("session");
       const userId = randomId("user");
@@ -1059,6 +1091,7 @@ async function requestHandler(req, res) {
       for (const old of lobbies.values()) {
         if (old.isOpen && String(old.title || "").trim().toLowerCase() === titleKey) {
           old.isOpen = false;
+          await persistLobbyNow(old);
         }
       }
       const lobby = {
@@ -1078,7 +1111,11 @@ async function requestHandler(req, res) {
         console.warn("Не удалось загрузить тестового героя:", error.message || error);
       }
       lobbies.set(lobbyId, lobby);
-      sessions.set(token, { role: "master", lobbyId, userId, userName: masterName });
+      const session = { role: "master", lobbyId, userId, userName: masterName };
+      sessions.set(token, session);
+      activePersistLobby = lobby;
+      await persistSession(token, session);
+      await persistLobbyNow(lobby);
       sendJson(res, 201, { token, lobby: lobbyPublicView(lobby) });
       return;
     }
@@ -1092,7 +1129,9 @@ async function requestHandler(req, res) {
       }
       const token = randomId("session");
       const userId = randomId("user");
-      sessions.set(token, { role: "player", userId, userName: playerName });
+      const session = { role: "player", userId, userName: playerName };
+      sessions.set(token, session);
+      await persistSession(token, session);
       sendJson(res, 201, { token, playerId: userId, playerName });
       return;
     }
@@ -1117,6 +1156,7 @@ async function requestHandler(req, res) {
     }
 
     if (req.method === "GET" && parsedUrl.pathname === "/lobbies/open") {
+      await loadOpenLobbies(lobbies);
       const open = [...lobbies.values()]
         .filter((l) => l.isOpen)
         .map(lobbyPublicView)
@@ -1131,6 +1171,10 @@ async function requestHandler(req, res) {
       if (!session || session.role !== "player") {
         sendJson(res, 401, { error: "Войдите как игрок" });
         return;
+      }
+      if (!lobbies.has(lobbyId)) {
+        const loaded = await loadLobby(lobbyId);
+        if (loaded) lobbies.set(loaded.id, loaded);
       }
       const lobby = lobbies.get(lobbyId);
       if (!lobby || !lobby.isOpen) {
@@ -1150,6 +1194,9 @@ async function requestHandler(req, res) {
       } else if (!Array.isArray(existing.inventory)) {
         existing.inventory = [];
       }
+      activePersistLobby = lobby;
+      await persistSession(getSessionToken(req), session);
+      await persistLobbyNow(lobby);
       sendJson(res, 200, { lobby: lobbyPublicView(lobby), memberRole: "spectator" });
       return;
     }
@@ -1168,6 +1215,7 @@ async function requestHandler(req, res) {
         sendJson(res, 400, { error: "Укажите название лобби" });
         return;
       }
+      await loadOpenLobbies(lobbies);
       const matches = [...lobbies.values()]
         .filter((l) => l.isOpen && String(l.title || "").trim().toLowerCase() === needle)
         .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -1198,11 +1246,15 @@ async function requestHandler(req, res) {
       } else if (!Array.isArray(existing.inventory)) {
         existing.inventory = [];
       }
+      activePersistLobby = lobby;
+      await persistSession(getSessionToken(req), session);
+      await persistLobbyNow(lobby);
       sendJson(res, 200, { lobby: lobbyPublicView(lobby), memberRole: "spectator" });
       return;
     }
 
     const lobby = getLobbyFromSession(req);
+    if (lobby) activePersistLobby = lobby;
     const gamePaths = [
       "/characters/import",
       "/characters",
@@ -2740,6 +2792,8 @@ async function requestHandler(req, res) {
         return;
       }
       lobby.isOpen = false;
+      activePersistLobby = lobby;
+      await persistLobbyNow(lobby);
       sendJson(res, 200, { lobby: lobbyPublicView(lobby) });
       return;
     }
@@ -2760,13 +2814,24 @@ function preloadCatalogs() {
   });
 }
 
+async function bootPersist() {
+  try {
+    await loadOpenLobbies(lobbies);
+    console.log(`[lobby-persist] hydrated lobbies=${lobbies.size} backend=${getPersistBackend()}`);
+  } catch (error) {
+    console.warn("[lobby-persist] boot failed:", error.message || error);
+  }
+}
+
 if (!isVercel) {
   server.listen(port, host, () => {
     console.log(`@dnd/server listening on http://${host}:${port}`);
     preloadCatalogs();
+    bootPersist();
   });
 } else {
   preloadCatalogs();
+  bootPersist();
 }
 
 export default requestHandler;
